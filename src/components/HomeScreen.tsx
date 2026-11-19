@@ -125,15 +125,15 @@ export function HomeScreen({
   return (
     <div className="screen">
       <div className="home">
-        <div className="hero-fan" aria-hidden="true">
-          {HERO_CARDS.map((card, i) => (
-            <div key={card.id} className="hero-card" style={{ '--off': i - 2 } as CSSProperties}>
-              <PlayingCard card={card} size="lg" />
-            </div>
-          ))}
-        </div>
-
         <div className="home-card">
+          <div className="hero-fan" aria-hidden="true">
+            {HERO_CARDS.map((card, i) => (
+              <div key={card.id} className="hero-card" style={{ '--off': i - 2 } as CSSProperties}>
+                <PlayingCard card={card} size="lg" />
+              </div>
+            ))}
+          </div>
+
           <h1 className="brand">
             Capsa <span>Banting</span>
           </h1>

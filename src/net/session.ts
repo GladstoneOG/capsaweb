@@ -85,11 +85,11 @@ class HostAutomation {
       return;
     }
 
-    // 1. Check if a bot is the target of a pending trade request
+    // 1. Check if a bot (or AFK human) is the target of a pending trade request
     const pendingTrade = state.tradingState?.pendingRequest;
     if (pendingTrade && pendingTrade.targetPlayerId) {
       const target = state.players.find((p) => p.id === pendingTrade.targetPlayerId);
-      if (target?.isBot) {
+      if (target && (target.isBot || target.autoPlay)) {
         this.botTimer = window.setTimeout(() => {
           const decision = evaluateBotTradeFulfill(target.cards, pendingTrade.requestedCard);
           if (decision.accept && decision.extraCard) {
@@ -103,14 +103,14 @@ class HostAutomation {
       }
     }
 
-    // 2. Check if current turn belongs to a bot
+    // 2. Check if current turn belongs to a bot (or AFK human)
     const current = state.players[state.turnIndex];
-    if (current?.isBot && current.cards.length > 0 && !pendingTrade) {
+    if (current && (current.isBot || current.autoPlay) && current.cards.length > 0 && !pendingTrade) {
       const turnKey = `${state.roundNumber}_${state.stateVersion}_${current.id}`;
       this.botTimer = window.setTimeout(() => {
         const fresh = this.engine.getState();
         const activeBot = fresh.players[fresh.turnIndex];
-        if (!activeBot || activeBot.id !== current.id || !activeBot.isBot) return;
+        if (!activeBot || activeBot.id !== current.id || (!activeBot.isBot && !activeBot.autoPlay)) return;
 
         // Optional bot trade attempt once per turn if trading enabled
         if (
@@ -221,6 +221,8 @@ function executeIntentOnEngine(
       return engine.tradeCancel(actorId);
     case 'DISMISS_DICE':
       return engine.dismissDiceShowdown();
+    case 'TOGGLE_AUTOPLAY':
+      return engine.toggleAutoPlay(actorId);
     case 'CHAT':
       return engine.addChat(actorId, intent.text);
   }

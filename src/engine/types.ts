@@ -52,6 +52,7 @@ export interface Player {
   isHost: boolean;
   isReady: boolean;
   isBot: boolean;
+  autoPlay?: boolean;
   disconnected?: boolean;
   transport: PlayerTransport;
   cards: Card[];
@@ -68,6 +69,7 @@ export interface SanitizedPlayer {
   isHost: boolean;
   isReady: boolean;
   isBot: boolean;
+  autoPlay?: boolean;
   disconnected?: boolean;
   transport: PlayerTransport;
   cards: Card[] | null; // non-null only for the viewing player
@@ -195,4 +197,5 @@ export type ClientIntent =
   | { type: 'TRADE_DECLINE' }
   | { type: 'TRADE_CANCEL' }
   | { type: 'DISMISS_DICE' }
+  | { type: 'TOGGLE_AUTOPLAY' }
   | { type: 'CHAT'; text: string };

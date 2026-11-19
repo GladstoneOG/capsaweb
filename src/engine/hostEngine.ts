@@ -906,6 +906,25 @@ export class CapsaHostEngine {
     return { ok: true };
   }
 
+  // ==================== AFK AUTO-PLAY ====================
+
+  toggleAutoPlay(actorId: string): ActionResult {
+    const player = this.state.players.find((p) => p.id === actorId);
+    if (!player || player.isBot) return { ok: false, error: 'Invalid player.' };
+    player.autoPlay = !player.autoPlay;
+    this.pushActivity(
+      'system',
+      'System',
+      player.autoPlay
+        ? `${player.name} stepped away — a bot is covering their turns.`
+        : `${player.name} took back control.`,
+      true
+    );
+    this.resetTurnDeadline();
+    this.bumpVersion();
+    return { ok: true };
+  }
+
   // ==================== CHAT ====================
 
   addChat(actorId: string, text: string): ActionResult {
@@ -951,6 +970,7 @@ export class CapsaHostEngine {
         isHost: p.isHost,
         isReady: p.isReady,
         isBot: p.isBot,
+        autoPlay: Boolean(p.autoPlay),
         disconnected: p.disconnected,
         transport: p.transport,
         cards: p.id === viewerId || revealAll ? [...p.cards] : null,

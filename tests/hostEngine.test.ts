@@ -264,4 +264,27 @@ describe('CapsaHostEngine Authoritative Rules & Scoring', () => {
     }
     expect(engine.getState().firstPlayMade).toBe(true);
   });
+
+  it('toggles AFK bot takeover on and off while keeping player seat and cards intact', () => {
+    const engine = new CapsaHostEngine({
+      code: 'AFK1',
+      mode: 'multiplayer',
+      hostId: 'host_1',
+      hostSessionId: 'sess_host',
+      hostName: 'Johan',
+    });
+    engine.startGame('host_1');
+
+    expect(engine.getSanitizedState('host_1').players[0].autoPlay).toBe(false);
+    expect(engine.toggleAutoPlay('host_1').ok).toBe(true);
+
+    const afkView = engine.getSanitizedState('host_1');
+    expect(afkView.players[0].autoPlay).toBe(true);
+    expect(afkView.players[0].isBot).toBe(false);
+    expect(afkView.players[0].isHost).toBe(true);
+    expect(afkView.players[0].cards).toHaveLength(13);
+
+    expect(engine.toggleAutoPlay('host_1').ok).toBe(true);
+    expect(engine.getSanitizedState('host_1').players[0].autoPlay).toBe(false);
+  });
 });

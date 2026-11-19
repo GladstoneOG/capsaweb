@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import {
   ArrowLeftRight,
   ArrowUpDown,
+  Bot,
   Crown,
   Flame,
   Lightbulb,
@@ -102,7 +103,9 @@ function Seat({
       ? `${ORDINALS[player.finishRank]} · Out!`
       : player.passed
         ? 'Pass'
-        : null;
+        : player.autoPlay
+          ? 'AFK · Bot'
+          : null;
 
   return (
     <div
@@ -115,7 +118,7 @@ function Seat({
       <div className="seat-avatar">
         <Avatar
           name={player.name}
-          isBot={player.isBot}
+          isBot={player.isBot || Boolean(player.autoPlay)}
           size="md"
           active={isTurn}
           dimmed={player.disconnected}
@@ -195,6 +198,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [seenActivityCount, setSeenActivityCount] = useState(room.activity.length);
   const [tradePickerOpen, setTradePickerOpen] = useState(false);
+  const [afkConfirmOpen, setAfkConfirmOpen] = useState(false);
 
   // Celebratory & impact effects state
   const [finishBanner, setFinishBanner] = useState<FinishBanner | null>(null);
@@ -206,9 +210,11 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const myIndex = room.players.findIndex((p) => p.id === room.viewerId);
   const me = myIndex >= 0 ? room.players[myIndex] : room.players[0];
   const isHost = Boolean(me?.isHost);
+  const isAfk = Boolean(me?.autoPlay);
   const currentPlayer = room.players[room.turnIndex];
   const diceActive = Boolean(room.diceShowdown);
   const isMyTurn = room.gameState === 'playing' && !diceActive && currentPlayer?.id === room.viewerId;
+  const canAct = isMyTurn && !isAfk;
   const isFirstPlayOfRound = !room.firstPlayMade && !room.activePlay;
 
   const rawHand = useMemo(() => me?.cards ?? [], [me?.cards]);
@@ -377,13 +383,13 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     setSelectedIds((prev) => (prev.includes(card.id) ? prev.filter((id) => id !== card.id) : [...prev, card.id]));
   }, []);
 
-  const canPass = isMyTurn && Boolean(room.activePlay) && !isFirstPlayOfRound;
+  const canPass = canAct && Boolean(room.activePlay) && !isFirstPlayOfRound;
 
   const handlePlay = useCallback(() => {
-    if (!isMyTurn || !selectionEval.valid) return;
+    if (!canAct || !selectionEval.valid) return;
     onIntent({ type: 'PLAY_CARDS', cardIds: selectedIds });
     setSelectedIds([]);
-  }, [isMyTurn, selectionEval.valid, onIntent, selectedIds]);
+  }, [canAct, selectionEval.valid, onIntent, selectedIds]);
 
   const handlePass = useCallback(() => {
     if (!canPass) return;
@@ -393,32 +399,46 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   }, [canPass, onIntent]);
 
   const handleUndoPass = useCallback(() => {
-    if (room.canUndoPass) onIntent({ type: 'UNDO_PASS' });
-  }, [room.canUndoPass, onIntent]);
+    if (!isAfk && room.canUndoPass) onIntent({ type: 'UNDO_PASS' });
+  }, [isAfk, room.canUndoPass, onIntent]);
 
   const handleHint = useCallback(() => {
-    if (!isMyTurn || eligiblePlays.length === 0) return;
+    if (!canAct || eligiblePlays.length === 0) return;
     const play = eligiblePlays[hintIdx % eligiblePlays.length];
     sfx.cardSelect();
     setSelectedIds(play.map((c) => c.id));
     setHintIdx((prev) => (prev + 1) % eligiblePlays.length);
-  }, [isMyTurn, eligiblePlays, hintIdx]);
+  }, [canAct, eligiblePlays, hintIdx]);
+
+  const handleAvatarClick = useCallback(() => {
+    if (isAfk) {
+      onIntent({ type: 'TOGGLE_AUTOPLAY' });
+    } else {
+      setAfkConfirmOpen(true);
+    }
+  }, [isAfk, onIntent]);
 
   // ---------- Keyboard shortcuts ----------
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (afkConfirmOpen) {
+        if (e.key === 'Escape') setAfkConfirmOpen(false);
+        return;
+      }
       if (tradePickerOpen || room.gameState !== 'playing') return;
       const k = e.key.toLowerCase();
-      if (e.key === 'Enter' && isMyTurn && selectionEval.valid) {
+      if (e.key === 'Enter' && canAct && selectionEval.valid) {
         e.preventDefault();
         handlePlay();
-      } else if (k === 'p') {
-        e.preventDefault();
-        if (canPass) handlePass();
-        else if (room.canUndoPass) handleUndoPass();
-      } else if (k === 'h' && isMyTurn) {
+      } else if (k === 'p' || e.key === 'Backspace') {
+        if (!isAfk && (canPass || room.canUndoPass)) {
+          e.preventDefault();
+          if (canPass) handlePass();
+          else if (room.canUndoPass) handleUndoPass();
+        }
+      } else if (k === 'h' && canAct) {
         e.preventDefault();
         handleHint();
       } else if (k === 's') {
@@ -431,10 +451,12 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
+    afkConfirmOpen,
     tradePickerOpen,
     room.gameState,
     room.canUndoPass,
-    isMyTurn,
+    isAfk,
+    canAct,
     canPass,
     selectionEval.valid,
     handlePlay,
@@ -700,19 +722,30 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
       {/* ================= DOCK ================= */}
       <footer className="dock">
         <div className="sel-slot">
-          {(selectionEval.label || noPlays) && (
-            <div
-              className={`sel-chip ${
-                selectionEval.label ? (selectionEval.valid ? 'is-valid' : 'is-invalid') : 'is-info'
-              }`}
+          {isAfk ? (
+            <button
+              type="button"
+              className="sel-chip is-afk-chip"
+              onClick={handleAvatarClick}
             >
-              <span>{selectionEval.label ?? 'Nothing beats that — pass?'}</span>
-              {selectedIds.length > 0 && (
-                <button type="button" aria-label="Clear selection" onClick={() => setSelectedIds([])}>
-                  <X size={12} />
-                </button>
-              )}
-            </div>
+              <Bot size={13} />
+              <span>AFK bot active — click here or your avatar to resume</span>
+            </button>
+          ) : (
+            (selectionEval.label || noPlays) && (
+              <div
+                className={`sel-chip ${
+                  selectionEval.label ? (selectionEval.valid ? 'is-valid' : 'is-invalid') : 'is-info'
+                }`}
+              >
+                <span>{selectionEval.label ?? 'Nothing beats that — pass?'}</span>
+                {selectedIds.length > 0 && (
+                  <button type="button" aria-label="Clear selection" onClick={() => setSelectedIds([])}>
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            )
           )}
         </div>
 
@@ -756,18 +789,32 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
           })}
         </div>
 
-        <div className={`dock-bar${isMyTurn ? ' is-turn' : ''}${me?.finishRank ? ' is-me-done' : ''}`}>
+        <div className={`dock-bar${isMyTurn ? ' is-turn' : ''}${me?.finishRank ? ' is-me-done' : ''}${isAfk ? ' is-afk' : ''}`}>
           <div className="me">
-            <Avatar
-              name={me?.name ?? 'You'}
-              size="sm"
-              active={isMyTurn}
-              timer={isMyTurn ? (timerData?.info ?? null) : null}
-            />
+            <button
+              type="button"
+              className={`me-avatar-btn${isAfk ? ' is-afk' : ''}`}
+              title={isAfk ? 'Click to resume control' : 'Click to let a bot play while AFK'}
+              aria-label={isAfk ? 'Resume control from AFK bot' : 'Enable AFK bot takeover'}
+              onClick={handleAvatarClick}
+            >
+              <Avatar
+                name={me?.name ?? 'You'}
+                isBot={isAfk}
+                size="sm"
+                active={isMyTurn}
+                timer={isMyTurn ? (timerData?.info ?? null) : null}
+              />
+              {isAfk && <span className="afk-dot">AFK</span>}
+            </button>
             <div className="me-info">
               <div className="me-name">
                 <span className="me-name-text">{me?.name}</span>
-                {isMyTurn && <span className="turn-pill">Your turn</span>}
+                {isAfk ? (
+                  <span className="afk-pill">AFK · Bot</span>
+                ) : (
+                  isMyTurn && <span className="turn-pill">Your turn</span>
+                )}
                 {me?.finishRank && (
                   <span className={`medal medal--${me.finishRank} medal--inline`}>
                     {ORDINALS[me.finishRank]}
@@ -807,7 +854,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               type="button"
               className="tool-btn"
               title="Hint (H)"
-              disabled={!isMyTurn || eligiblePlays.length === 0}
+              disabled={!canAct || eligiblePlays.length === 0}
               onClick={handleHint}
             >
               <Lightbulb size={15} />
@@ -818,7 +865,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
                 type="button"
                 className="tool-btn"
                 title="Request a card"
-                disabled={!isMyTurn || Boolean(pendingTrade)}
+                disabled={!canAct || Boolean(pendingTrade)}
                 onClick={() => setTradePickerOpen(true)}
               >
                 <ArrowLeftRight size={15} />
@@ -828,20 +875,31 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
           </div>
 
           <div className="actions">
-            {room.canUndoPass ? (
-              <button type="button" className="act-btn act-btn--ghost" onClick={handleUndoPass}>
+            {room.canUndoPass && !isAfk ? (
+              <button
+                type="button"
+                className="act-btn act-btn--ghost"
+                title="Undo Pass (P / Backspace)"
+                onClick={handleUndoPass}
+              >
                 <RotateCcw size={15} />
                 Undo
               </button>
             ) : (
-              <button type="button" className="act-btn act-btn--ghost" disabled={!canPass} onClick={handlePass}>
+              <button
+                type="button"
+                className="act-btn act-btn--ghost"
+                title="Pass (P / Backspace)"
+                disabled={!canPass}
+                onClick={handlePass}
+              >
                 Pass
               </button>
             )}
             <button
               type="button"
-              className={`act-btn act-btn--play${isMyTurn && selectionEval.valid ? ' is-ready' : ''}`}
-              disabled={!isMyTurn || !selectionEval.valid}
+              className={`act-btn act-btn--play${canAct && selectionEval.valid ? ' is-ready' : ''}`}
+              disabled={!canAct || !selectionEval.valid}
               onClick={handlePlay}
             >
               Play{selectedCards.length > 0 ? ` ${selectedCards.length}` : ''}
@@ -851,6 +909,44 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
       </footer>
 
       {/* ================= OVERLAYS ================= */}
+      {afkConfirmOpen && (
+        <div className="modal-backdrop" onClick={() => setAfkConfirmOpen(false)}>
+          <div className="modal modal--center" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="Close"
+              onClick={() => setAfkConfirmOpen(false)}
+            >
+              <X size={16} />
+            </button>
+            <div className="eyebrow">
+              <Bot size={13} /> AFK takeover
+            </div>
+            <h2 className="modal-title">Let a bot play for you?</h2>
+            <p className="modal-sub">
+              You'll stay seated at the table while a bot plays your turns automatically. Click your avatar anytime to take back control.
+            </p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setAfkConfirmOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setAfkConfirmOpen(false);
+                  setSelectedIds([]);
+                  onIntent({ type: 'TOGGLE_AUTOPLAY' });
+                }}
+              >
+                <Bot size={16} />
+                Enable bot takeover
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {room.diceShowdown && (
         <DiceDuelModal showdown={room.diceShowdown} onDismiss={() => onIntent({ type: 'DISMISS_DICE' })} />
       )}

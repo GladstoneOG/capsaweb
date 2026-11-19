@@ -567,6 +567,7 @@ input:focus-visible {
   align-items: center;
   gap: 14px;
   margin: auto 0;
+  padding-top: clamp(58px, 7vh, 84px);
 }
 
 .hero-fan {
@@ -574,9 +575,10 @@ input:focus-visible {
   align-items: center;
   justify-content: center;
   height: clamp(114px, 12.5vh, 148px);
-  margin-bottom: -40px;
+  margin-top: clamp(-98px, -8.5vh, -76px);
+  margin-bottom: -28px;
   position: relative;
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
 }
 
@@ -615,7 +617,7 @@ input:focus-visible {
   flex-direction: column;
   gap: 12px;
   position: relative;
-  z-index: 3;
+  z-index: 1;
 }
 
 .invite-banner {
@@ -643,6 +645,8 @@ input:focus-visible {
 }
 
 .brand {
+  position: relative;
+  z-index: 4;
   margin: 0;
   text-align: center;
   font-size: clamp(2.2rem, 2.9vw, 2.9rem);
@@ -650,7 +654,7 @@ input:focus-visible {
   letter-spacing: -0.03em;
   line-height: 1.04;
   color: var(--text);
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  filter: drop-shadow(0 3px 12px rgba(2, 12, 8, 0.92)) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.95));
 }
 
 .brand span {
@@ -660,7 +664,9 @@ input:focus-visible {
 }
 
 .tagline {
-  margin: 6px 0 0;
+  position: relative;
+  z-index: 4;
+  margin: 4px 0 0;
   text-align: center;
   color: var(--text-2);
   font-size: 0.95rem;
@@ -1944,6 +1950,18 @@ button.seat-tile.is-empty:hover {
   color: var(--text-2);
 }
 
+.sel-chip.is-afk-chip {
+  background: rgba(16, 46, 56, 0.92);
+  border: 1px solid rgba(125, 211, 252, 0.48);
+  color: var(--sky);
+  cursor: pointer;
+}
+
+.sel-chip.is-afk-chip:hover {
+  background: rgba(24, 62, 74, 0.96);
+  border-color: var(--sky);
+}
+
 .sel-chip button {
   width: 18px;
   height: 18px;
@@ -2022,11 +2040,64 @@ button.seat-tile.is-empty:hover {
   border-color: rgba(94, 234, 212, 0.52);
 }
 
+.dock-bar.is-afk {
+  border-color: rgba(125, 211, 252, 0.55);
+  box-shadow: 0 0 24px rgba(125, 211, 252, 0.16), 0 12px 32px rgba(0, 0, 0, 0.46);
+}
+
 .me {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.me-avatar-btn {
+  position: relative;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.me-avatar-btn:hover .avatar-core {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 3px rgba(242, 198, 109, 0.34), 0 6px 16px rgba(0, 0, 0, 0.42);
+}
+
+.me-avatar-btn.is-afk .avatar-core {
+  border-color: var(--sky);
+  box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.28), 0 4px 14px rgba(0, 0, 0, 0.42);
+}
+
+.afk-dot {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--sky);
+  color: #082032;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+}
+
+.afk-pill {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.2);
+  color: var(--sky);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
 .me-info {
