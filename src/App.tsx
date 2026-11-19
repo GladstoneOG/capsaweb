@@ -87,11 +87,6 @@ export function App() {
       const code = await createRoomCode(name, password);
       const hostSession = new HostMultiplayerSession(code, name);
       setSession(hostSession);
-      try {
-        window.history.replaceState({}, '', `/?room=${code}`);
-      } catch {
-        // ignore
-      }
     } catch (err) {
       setHomeError(err instanceof Error ? err.message : 'Unable to create room.');
     } finally {
@@ -105,11 +100,6 @@ export function App() {
     const cleanCode = code.toUpperCase();
     const peerSession = new PeerMultiplayerSession(cleanCode, name, password);
     setSession(peerSession);
-    try {
-      window.history.replaceState({}, '', `/?room=${cleanCode}`);
-    } catch {
-      // ignore
-    }
   };
 
   const handleSolo = (name: string) => {

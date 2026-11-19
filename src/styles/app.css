@@ -569,12 +569,17 @@ input:focus-visible {
   margin: auto 0;
 }
 
+.home-hero-title {
+  text-align: center;
+  margin-bottom: 2px;
+}
+
 .hero-fan {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: clamp(118px, 12vh, 146px);
-  margin-bottom: -30px;
+  height: clamp(114px, 12.5vh, 148px);
+  margin-bottom: -18px;
   position: relative;
   z-index: 2;
   pointer-events: none;
@@ -602,7 +607,7 @@ input:focus-visible {
 
 .home-card {
   width: 100%;
-  padding: 42px 28px 24px;
+  padding: 26px 26px 22px;
   border-radius: 28px;
   background: var(--glass);
   border: 1px solid var(--line-2);
@@ -615,17 +620,42 @@ input:focus-visible {
   flex-direction: column;
   gap: 12px;
   position: relative;
-  z-index: 1;
+  z-index: 3;
+}
+
+.invite-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 16px;
+  background: rgba(242, 198, 109, 0.12);
+  border: 1px solid rgba(242, 198, 109, 0.38);
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.invite-banner strong {
+  color: var(--gold-2);
+  letter-spacing: 0.08em;
+}
+
+.invite-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .brand {
   margin: 0;
   text-align: center;
-  font-size: clamp(2.1rem, 2.6vw, 2.6rem);
+  font-size: clamp(2.2rem, 2.9vw, 2.9rem);
   font-weight: 800;
   letter-spacing: -0.03em;
-  line-height: 1.05;
+  line-height: 1.04;
   color: var(--text);
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
 }
 
 .brand span {
@@ -635,10 +665,10 @@ input:focus-visible {
 }
 
 .tagline {
-  margin: 0 0 6px;
+  margin: 6px 0 0;
   text-align: center;
   color: var(--text-2);
-  font-size: 0.94rem;
+  font-size: 0.95rem;
 }
 
 .home-inputs {

@@ -479,8 +479,21 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const noPlays = isMyTurn && !isFirstPlayOfRound && room.activePlay && eligiblePlays.length === 0;
   const leaderName = currentPlayer?.id === room.viewerId ? 'You' : currentPlayer?.name;
 
+  const handleRightClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+      if (selectedIds.length > 0) {
+        sfx.cardSelect();
+        setSelectedIds([]);
+      }
+    },
+    [selectedIds.length]
+  );
+
   return (
-    <div className="table-shell">
+    <div className="table-shell" onContextMenu={handleRightClick}>
       {midRoundConfettiKey > 0 && room.gameState === 'playing' && (
         <Confetti key={midRoundConfettiKey} count={75} duration={2100} />
       )}

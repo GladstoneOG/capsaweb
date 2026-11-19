@@ -45,11 +45,49 @@ export function HomeScreen({
   const [showRules, setShowRules] = useState(false);
   const [rooms, setRooms] = useState<LobbyListing[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
-  const [joinPromptRoom, setJoinPromptRoom] = useState<LobbyListing | null>(null);
+  const [joinPromptRoom, setJoinPromptRoom] = useState<{
+    code: string;
+    hostName: string;
+  } | null>(null);
   const [joinPassword, setJoinPassword] = useState('');
+  const [liveInvite, setLiveInvite] = useState<{ code: string; hasPassword: boolean } | null>(null);
 
   const cleanName = name.trim() || 'Player';
   const invitedCode = initialRoomCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+
+  const clearRoomParam = useCallback(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('room')) {
+        url.searchParams.delete('room');
+        window.history.replaceState({}, '', url.pathname);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Validate any ?room=XXXX invite link; silently strip stale/closed room URLs
+  useEffect(() => {
+    if (invitedCode.length !== 4) return;
+    let cancelled = false;
+    void fetch(`/api/room/${invitedCode}/status`)
+      .then((res) => (res.ok ? (res.json() as Promise<{ hasHost?: boolean; hasPassword?: boolean }>) : null))
+      .then((status) => {
+        if (cancelled) return;
+        if (status?.hasHost) {
+          setLiveInvite({ code: invitedCode, hasPassword: Boolean(status.hasPassword) });
+        } else {
+          clearRoomParam();
+        }
+      })
+      .catch(() => {
+        if (!cancelled) clearRoomParam();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [invitedCode, clearRoomParam]);
 
   const loadRooms = useCallback(async (showSpin = false) => {
     if (showSpin) setLoadingRooms(true);
@@ -67,16 +105,33 @@ export function HomeScreen({
   const handleSelectRoom = (room: LobbyListing) => {
     if (busy || room.gameState !== 'lobby' || room.playerCount >= room.maxPlayers) return;
     if (room.hasPassword) {
-      setJoinPromptRoom(room);
+      setJoinPromptRoom({ code: room.code, hostName: room.hostName });
       setJoinPassword('');
       return;
     }
     onJoin(room.code, cleanName);
   };
 
+  const handleAcceptInvite = () => {
+    if (!liveInvite || busy) return;
+    if (liveInvite.hasPassword) {
+      setJoinPromptRoom({ code: liveInvite.code, hostName: `Table ${liveInvite.code}` });
+      setJoinPassword('');
+      return;
+    }
+    onJoin(liveInvite.code, cleanName);
+  };
+
   return (
     <div className="screen">
       <div className="home">
+        <header className="home-hero-title">
+          <h1 className="brand">
+            Capsa <span>Banting</span>
+          </h1>
+          <p className="tagline">Host a table or hop right into an open lobby.</p>
+        </header>
+
         <div className="hero-fan" aria-hidden="true">
           {HERO_CARDS.map((card, i) => (
             <div key={card.id} className="hero-card" style={{ '--off': i - 2 } as CSSProperties}>
@@ -86,10 +141,36 @@ export function HomeScreen({
         </div>
 
         <div className="home-card">
-          <h1 className="brand">
-            Capsa <span>Banting</span>
-          </h1>
-          <p className="tagline">Host a table or hop right into an open lobby.</p>
+          {liveInvite && (
+            <div className="invite-banner">
+              <span>
+                Invite to <strong>{liveInvite.code}</strong>
+                {liveInvite.hasPassword && <Lock size={12} style={{ marginLeft: 5, verticalAlign: '-1px' }} />}
+              </span>
+              <div className="invite-banner-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={busy}
+                  onClick={handleAcceptInvite}
+                >
+                  Join
+                  <ArrowRight size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn icon-btn--sm"
+                  aria-label="Dismiss invite"
+                  onClick={() => {
+                    setLiveInvite(null);
+                    clearRoomParam();
+                  }}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="home-inputs">
             <label className="field">
@@ -119,27 +200,15 @@ export function HomeScreen({
             </label>
           </div>
 
-          {invitedCode.length === 4 ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-lg"
-              disabled={busy}
-              onClick={() => onJoin(invitedCode, cleanName, password)}
-            >
-              Join invited table {invitedCode}
-              <ArrowRight size={18} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn-primary btn-lg"
-              disabled={busy}
-              onClick={() => onHost(cleanName, password)}
-            >
-              <Users size={18} />
-              {busy ? 'Creating table…' : 'Host game'}
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn btn-primary btn-lg"
+            disabled={busy}
+            onClick={() => onHost(cleanName, password)}
+          >
+            <Users size={18} />
+            {busy ? 'Creating table…' : 'Host game'}
+          </button>
 
           <button type="button" className="link-btn" disabled={busy} onClick={() => onSolo(cleanName)}>
             <Bot size={16} />
@@ -238,7 +307,7 @@ export function HomeScreen({
             <div className="eyebrow">
               <Lock size={12} /> Locked table · {joinPromptRoom.code}
             </div>
-            <h2 className="modal-title">Join {joinPromptRoom.hostName}'s Table</h2>
+            <h2 className="modal-title">Join {joinPromptRoom.hostName}</h2>
             <p className="modal-sub">Enter the room password to take a seat.</p>
             <form
               onSubmit={(e) => {
