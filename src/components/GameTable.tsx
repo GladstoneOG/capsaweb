@@ -699,7 +699,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
 
       {/* ================= DOCK ================= */}
       <footer className="dock">
-        <div className={`hand${useTwoRows ? ' is-two-rows' : ''}`} key={`round_${room.roundNumber}`}>
+        <div className="sel-slot">
           {(selectionEval.label || noPlays) && (
             <div
               className={`sel-chip ${
@@ -714,7 +714,9 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               )}
             </div>
           )}
+        </div>
 
+        <div className={`hand${useTwoRows ? ' is-two-rows' : ''}`} key={`round_${room.roundNumber}`}>
           {handRows.map((row, rowIdx) => {
             const n = row.length;
             const spread = Math.min(2.8, 30 / Math.max(n, 1));

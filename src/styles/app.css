@@ -569,19 +569,14 @@ input:focus-visible {
   margin: auto 0;
 }
 
-.home-hero-title {
-  text-align: center;
-  margin-bottom: 2px;
-}
-
 .hero-fan {
   display: flex;
   align-items: center;
   justify-content: center;
   height: clamp(114px, 12.5vh, 148px);
-  margin-bottom: -18px;
+  margin-bottom: -40px;
   position: relative;
-  z-index: 2;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -607,7 +602,7 @@ input:focus-visible {
 
 .home-card {
   width: 100%;
-  padding: 26px 26px 22px;
+  padding: 28px 28px 24px;
   border-radius: 28px;
   background: var(--glass);
   border: 1px solid var(--line-2);
@@ -1888,8 +1883,16 @@ button.seat-tile.is-empty:hover {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(8px, 1vh, 14px);
-  padding: 0 18px clamp(12px, 1.6vh, 22px);
+  gap: clamp(6px, 0.8vh, 10px);
+  padding: 0 18px clamp(12px, 1.5vh, 20px);
+}
+
+.sel-slot {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .hand {
@@ -1900,29 +1903,26 @@ button.seat-tile.is-empty:hover {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding-top: clamp(46px, 4.8vh, 60px);
+  padding-top: 28px;
 }
 
 /* Compact card scale for 2-row 26-card double-deck hands */
 .hand.is-two-rows {
-  padding-top: 38px;
+  padding-top: 26px;
   gap: 2px;
   --card-w: clamp(64px, 4.4vw, 84px);
   --card-h: calc(var(--card-w) * 1.425);
 }
 
 .sel-chip {
-  position: absolute;
-  top: 0;
-  z-index: 60;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 14px;
+  gap: 6px;
+  padding: 6px 12px;
   border-radius: 999px;
-  font-size: clamp(0.78rem, 0.86vw, 0.88rem);
+  font-size: clamp(0.76rem, 0.84vw, 0.86rem);
   font-weight: 700;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
   animation: popIn 0.18s var(--ease-spring);
 }
 
@@ -2664,13 +2664,13 @@ button.seat-tile.is-empty:hover {
   }
 
   .hand {
-    padding-top: 46px;
+    padding-top: 24px;
   }
 
   .hand.is-two-rows {
     --card-w: 48px;
     --card-h: 69px;
-    padding-top: 38px;
+    padding-top: 22px;
   }
 
   .fan-slot {
@@ -2705,8 +2705,9 @@ button.seat-tile.is-empty:hover {
   }
 
   .tool-btn { padding: 6px 10px; font-size: 0.78rem; }
-  .act-btn { padding: 8px 15px; font-size: 0.86rem; }
-  .act-btn--play { min-width: 78px; }
+  .act-btn { padding: 8px 14px; font-size: 0.84rem; }
+  .act-btn--play { min-width: 74px; }
+  .sel-chip { padding: 4px 9px; font-size: 0.72rem; }
   .trick-card { margin-left: -18px; }
   .trade-row { gap: 2px; }
   .trade-cell { padding: 6px 1px; font-size: 0.68rem; }

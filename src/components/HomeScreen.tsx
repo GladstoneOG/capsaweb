@@ -125,13 +125,6 @@ export function HomeScreen({
   return (
     <div className="screen">
       <div className="home">
-        <header className="home-hero-title">
-          <h1 className="brand">
-            Capsa <span>Banting</span>
-          </h1>
-          <p className="tagline">Host a table or hop right into an open lobby.</p>
-        </header>
-
         <div className="hero-fan" aria-hidden="true">
           {HERO_CARDS.map((card, i) => (
             <div key={card.id} className="hero-card" style={{ '--off': i - 2 } as CSSProperties}>
@@ -141,6 +134,11 @@ export function HomeScreen({
         </div>
 
         <div className="home-card">
+          <h1 className="brand">
+            Capsa <span>Banting</span>
+          </h1>
+          <p className="tagline">Host a table or hop right into an open lobby.</p>
+
           {liveInvite && (
             <div className="invite-banner">
               <span>
