@@ -125,7 +125,6 @@ export function App() {
     [session]
   );
 
-  // If peer failed to connect before ever receiving a room snapshot, return cleanly to home with error
   const fatalBeforeRoom =
     session &&
     snapshot &&
@@ -143,9 +142,7 @@ export function App() {
   }, [fatalBeforeRoom, snapshot?.error, session]);
 
   return (
-    <div className="felt-bg">
-      <div className="felt-rail" />
-
+    <div className="app-bg">
       {!session || !snapshot ? (
         <HomeScreen
           initialRoomCode={initialRoomCode}
@@ -157,24 +154,26 @@ export function App() {
           onSolo={handleSolo}
         />
       ) : !snapshot.room ? (
-        <div className="home-wrap">
-          <div className="panel home-card" style={{ textAlign: 'center' }}>
-            <h2 className="modal-title">Connecting to Table…</h2>
-            <p className="modal-sub">Negotiating peer link with the host.</p>
-            <button type="button" className="btn btn-secondary" onClick={leaveSession}>
+        <div className="screen">
+          <div className="status-card">
+            <div className="eyebrow">Linking up</div>
+            <h2 className="modal-title">Connecting to table…</h2>
+            <p className="modal-sub">Negotiating a peer connection with the host.</p>
+            <button type="button" className="btn btn-ghost" onClick={leaveSession}>
               Cancel
             </button>
           </div>
         </div>
       ) : snapshot.status === 'disconnected' || snapshot.status === 'error' ? (
-        <div className="home-wrap">
-          <div className="panel home-card" style={{ textAlign: 'center' }}>
-            <h2 className="modal-title">Table Disconnected</h2>
+        <div className="screen">
+          <div className="status-card">
+            <div className="eyebrow">Connection lost</div>
+            <h2 className="modal-title">Table closed</h2>
             <p className="modal-sub">
               {snapshot.error || 'The connection to the host was lost.'}
             </p>
             <button type="button" className="btn btn-primary" onClick={leaveSession}>
-              Return to Home
+              Back to home
             </button>
           </div>
         </div>

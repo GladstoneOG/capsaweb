@@ -1,36 +1,38 @@
 import type { Card, Suit } from '@engine/types';
 
-function SuitGlyph({ suit, className }: { suit: Suit; className?: string }) {
+export function SuitGlyph({ suit, className }: { suit: Suit; className?: string }) {
   switch (suit) {
     case 'D':
       return (
         <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M12 2L20.5 12L12 22L3.5 12Z" />
+          <path d="M12 1.8c2.2 3.4 4.9 6.6 8.2 10.2-3.3 3.6-6 6.8-8.2 10.2C9.8 18.8 7.1 15.6 3.8 12 7.1 8.4 9.8 5.2 12 1.8z" />
         </svg>
       );
     case 'C':
       return (
         <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <circle cx="12" cy="7.5" r="4.1" />
-          <circle cx="7.4" cy="13.2" r="4.1" />
-          <circle cx="16.6" cy="13.2" r="4.1" />
-          <path d="M10.4 14.5h3.2l1.6 7H8.8z" />
+          <circle cx="12" cy="7.2" r="4.3" />
+          <circle cx="7" cy="13.4" r="4.3" />
+          <circle cx="17" cy="13.4" r="4.3" />
+          <path d="M11 13h2c.2 3.4 1.2 6.2 3 8.6H8c1.8-2.4 2.8-5.2 3-8.6z" />
         </svg>
       );
     case 'H':
       return (
         <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+          <path d="M12 21.6C6.2 16.9 2 13.3 2 8.6 2 5.5 4.4 3.2 7.3 3.2c1.9 0 3.6 1 4.7 2.6 1.1-1.6 2.8-2.6 4.7-2.6 2.9 0 5.3 2.3 5.3 5.4 0 4.7-4.2 8.3-10 13z" />
         </svg>
       );
     case 'S':
       return (
         <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M12 2C9 6.5 3.5 9.8 3.5 14c0 2.9 2.2 4.8 4.8 4.8 1.5 0 2.6-.7 3.2-1.6L10 22h4l-1.5-4.8c.6.9 1.7 1.6 3.2 1.6 2.6 0 4.8-1.9 4.8-4.8C20.5 9.8 15 6.5 12 2z" />
+          <path d="M12 1.6c-2.6 3.9-8.6 7.4-8.6 11.9 0 2.8 2.1 4.8 4.7 4.8 1.4 0 2.6-.6 3.3-1.6-.2 2-1 3.6-2.4 5.3h6c-1.4-1.7-2.2-3.3-2.4-5.3.7 1 1.9 1.6 3.3 1.6 2.6 0 4.7-2 4.7-4.8 0-4.5-6-8-8.6-11.9z" />
         </svg>
       );
   }
 }
+
+const SUIT_NAMES: Record<Suit, string> = { D: 'Diamonds', C: 'Clubs', H: 'Hearts', S: 'Spades' };
 
 interface PlayingCardProps {
   card: Card;
@@ -50,50 +52,60 @@ export function PlayingCard({
   onClick,
 }: PlayingCardProps) {
   const isRed = card.suit === 'D' || card.suit === 'H';
+  const isFace = card.rank === 'J' || card.rank === 'Q' || card.rank === 'K';
   const classes = [
-    'playing-card',
-    size !== 'md' ? size : '',
-    isRed ? 'red' : 'black',
-    interactive ? 'interactive' : '',
-    selected ? 'selected' : '',
-    highlightStarting ? 'starting-highlight' : '',
+    'pcard',
+    `pcard--${size}`,
+    isRed ? 'is-red' : 'is-black',
+    interactive ? 'is-interactive' : '',
+    selected ? 'is-selected' : '',
+    highlightStarting ? 'is-start' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
-  const Tag = interactive ? 'button' : 'div';
-
-  return (
-    <Tag
-      type={interactive ? 'button' : undefined}
-      className={classes}
-      onClick={onClick}
-      aria-pressed={interactive ? selected : undefined}
-      aria-label={`${card.rank} of ${
-        card.suit === 'D'
-          ? 'Diamonds'
-          : card.suit === 'C'
-            ? 'Clubs'
-            : card.suit === 'H'
-              ? 'Hearts'
-              : 'Spades'
-      }`}
-    >
-      <div className="card-corner">
-        <span className="card-rank">{card.rank}</span>
-        <SuitGlyph suit={card.suit} className="card-corner-suit" />
-      </div>
-
-      <div className="card-center-suit">
+  const inner = (
+    <>
+      <span className="pcard-idx">
+        <span className="pcard-rank">{card.rank}</span>
         <SuitGlyph suit={card.suit} />
-      </div>
-
-      <div className="card-corner bottom">
-        <span className="card-rank">{card.rank}</span>
-        <SuitGlyph suit={card.suit} className="card-corner-suit" />
-      </div>
-
-      {highlightStarting && <span className="card-start-dot" title="Starting card" />}
-    </Tag>
+      </span>
+      <span className="pcard-center">
+        {isFace ? (
+          <span className="pcard-face">
+            <span className="pcard-face-letter">{card.rank}</span>
+            <SuitGlyph suit={card.suit} className="pcard-face-suit" />
+          </span>
+        ) : (
+          <SuitGlyph
+            suit={card.suit}
+            className={`pcard-pip${card.rank === 'A' || card.rank === '2' ? ' is-big' : ''}`}
+          />
+        )}
+      </span>
+      <span className="pcard-idx is-br">
+        <span className="pcard-rank">{card.rank}</span>
+        <SuitGlyph suit={card.suit} />
+      </span>
+    </>
   );
+
+  const label = `${card.rank} of ${SUIT_NAMES[card.suit]}`;
+
+  if (interactive) {
+    return (
+      <button type="button" className={classes} onClick={onClick} aria-pressed={selected} aria-label={label}>
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <div className={classes} role="img" aria-label={label}>
+      {inner}
+    </div>
+  );
+}
+
+export function CardBack({ className = '' }: { className?: string }) {
+  return <span className={`card-back ${className}`} aria-hidden="true" />;
 }

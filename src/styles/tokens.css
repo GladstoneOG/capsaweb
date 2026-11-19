@@ -1,54 +1,60 @@
 :root {
-  /* Modern Emerald Felt Palette */
-  --felt-center: #11533c;
-  --felt-mid: #0b3b2a;
-  --felt-edge: #051d15;
-  --felt-deep: #03120d;
+  /* Room / ambient */
+  --bg-0: #040b08;
+  --bg-1: #08170f;
+  --bg-2: #0d2a1f;
 
-  /* Surfaces */
-  --surface-glass: rgba(6, 28, 20, 0.82);
-  --surface-elevated: rgba(9, 41, 30, 0.92);
-  --surface-card: #fcfbf7;
-  --surface-card-hover: #ffffff;
-  --surface-subtle: rgba(255, 255, 255, 0.06);
-  --surface-subtle-hover: rgba(255, 255, 255, 0.11);
+  /* Felt */
+  --felt-1: #1c7f5d;
+  --felt-2: #11603f;
+  --felt-3: #0a3d2b;
 
-  /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.11);
-  --border-gold: rgba(218, 179, 86, 0.42);
-  --border-gold-strong: rgba(235, 199, 108, 0.85);
+  /* Walnut rim */
+  --wood-1: #74472b;
+  --wood-2: #4a2b18;
+  --wood-3: #26150b;
 
   /* Accents */
-  --gold: #e4bf62;
-  --gold-bright: #f4d889;
-  --gold-dim: #a98632;
-  --emerald-bright: #34d399;
-  --danger: #ef5350;
-  --danger-soft: rgba(239, 83, 80, 0.18);
+  --gold: #f2c66d;
+  --gold-2: #ffe1a0;
+  --gold-3: #b8893a;
+  --mint: #5eead4;
+  --coral: #ff7a6b;
+  --sky: #7dd3fc;
 
-  /* Suit Colors */
-  --suit-red: #c92a2a;
-  --suit-black: #181b1f;
+  /* Cards */
+  --paper-1: #fffdf8;
+  --paper-2: #f2eadb;
+  --ink: #1b1d22;
+  --red: #d33a3a;
 
   /* Text */
-  --text-primary: #f4f7f5;
-  --text-secondary: #a8c2b7;
-  --text-muted: #6e9284;
+  --text: #f6f3ea;
+  --text-2: #bccbc3;
+  --text-3: #7d968b;
 
-  /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, monospace;
+  /* Surfaces */
+  --glass: rgba(12, 30, 24, 0.66);
+  --glass-strong: rgba(8, 20, 16, 0.9);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-2: rgba(255, 255, 255, 0.17);
 
-  /* Shadows */
-  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5);
-  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.36), 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-card-selected: 0 12px 24px rgba(0, 0, 0, 0.48), 0 0 0 2px var(--gold-bright);
+  /* Card geometry */
+  --card-w: 80px;
+  --card-h: 114px;
+  --card-r: 10px;
 
-  /* Radii */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-pill: 999px;
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --font: 'Outfit Variable', 'Outfit', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+@media (max-width: 720px) {
+  :root {
+    --card-w: 56px;
+    --card-h: 80px;
+    --card-r: 8px;
+  }
 }

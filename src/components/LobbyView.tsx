@@ -1,18 +1,7 @@
-import { useState } from 'react';
-import {
-  Bot,
-  Check,
-  Copy,
-  Crown,
-  Link as LinkIcon,
-  LogOut,
-  Play,
-  SlidersHorizontal,
-  UserPlus,
-  Wifi,
-  X,
-} from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { Check, Copy, Crown, LogOut, Plus, Share2, Sparkles, Wifi, X } from 'lucide-react';
 import type { CapsaRules, ClientIntent, SanitizedRoomState } from '@engine/types';
+import { Avatar } from './Avatar';
 
 interface LobbyViewProps {
   room: SanitizedRoomState;
@@ -26,296 +15,288 @@ const TURN_TIMERS = [
   { label: 'Off', value: 0 },
   { label: '15s', value: 15 },
   { label: '30s', value: 30 },
-  { label: '45s', value: 45 },
   { label: '60s', value: 60 },
 ];
 
+function Toggle({ on, disabled, onClick, label }: { on: boolean; disabled: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      className={`toggle${on ? ' is-on' : ''}`}
+      onClick={onClick}
+    />
+  );
+}
+
 export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
-  const [copied, setCopied] = useState<'code' | 'link' | null>(null);
+  const [copied, setCopied] = useState(false);
   const me = room.players.find((p) => p.id === room.viewerId);
   const isHost = Boolean(me?.isHost);
   const allReady = room.players.every((p) => p.isReady || p.isHost);
+  const emptySlots = Math.max(0, 4 - room.players.length);
+  const isSolo = room.mode === 'solo';
+  const inviteLink = typeof window !== 'undefined' ? `${window.location.origin}/?room=${room.code}` : '';
 
-  const copyText = (text: string, kind: 'code' | 'link') => {
-    void navigator.clipboard?.writeText(text).then(() => {
-      setCopied(kind);
-      window.setTimeout(() => setCopied(null), 1800);
-    });
+  const share = async () => {
+    try {
+      if (navigator.share && /Mobi|Android/i.test(navigator.userAgent)) {
+        await navigator.share({ title: 'Capsa Banting', text: `Join my Capsa table: ${room.code}`, url: inviteLink });
+        return;
+      }
+      await navigator.clipboard?.writeText(inviteLink);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // user dismissed share sheet
+    }
   };
-
-  const inviteLink =
-    typeof window !== 'undefined' ? `${window.location.origin}/?room=${room.code}` : '';
 
   const updateRule = (patch: Partial<CapsaRules>) => {
-    if (!isHost) return;
-    onIntent({ type: 'UPDATE_RULES', rules: patch });
+    if (isHost) onIntent({ type: 'UPDATE_RULES', rules: patch });
   };
 
-  const emptySlots = Math.max(0, 4 - room.players.length);
-
   return (
-    <div className="lobby-wrap">
-      <div className="lobby-grid">
-        {/* Left: Players & Room Code */}
-        <div className="panel lobby-card">
-          <div className="lobby-top">
-            {room.mode === 'multiplayer' ? (
-              <div className="room-code-pill">
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Room
-                </span>
-                <span className="room-code-value">{room.code}</span>
-                <button
-                  type="button"
-                  className="btn-icon"
-                  title="Copy room code"
-                  onClick={() => copyText(room.code, 'code')}
-                >
-                  {copied === 'code' ? <Check size={15} color="#6ee7b7" /> : <Copy size={15} />}
-                </button>
-                <button
-                  type="button"
-                  className="btn-icon"
-                  title="Copy invite link"
-                  onClick={() => copyText(inviteLink, 'link')}
-                >
-                  {copied === 'link' ? <Check size={15} color="#6ee7b7" /> : <LinkIcon size={15} />}
-                </button>
-              </div>
+    <div className="screen">
+      <div className="lobby">
+        <header className="lobby-head">
+          <div>
+            <div className="eyebrow">{isSolo ? 'Practice table' : 'Your table'}</div>
+            {isSolo ? (
+              <h1 className="lobby-title">You vs. the bots</h1>
             ) : (
-              <div className="room-code-pill">
-                <Bot size={18} color="var(--gold-bright)" />
-                <span style={{ fontWeight: 700, color: 'var(--gold-bright)' }}>Solo vs Bots</span>
+              <div className="code-row">
+                <h1 className="room-code">{room.code}</h1>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={share}>
+                  {copied ? <Check size={15} /> : <Share2 size={15} />}
+                  {copied ? 'Link copied' : 'Invite'}
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn icon-btn--sm"
+                  aria-label="Copy code"
+                  onClick={() => void navigator.clipboard?.writeText(room.code)}
+                >
+                  <Copy size={14} />
+                </button>
               </div>
             )}
-
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onLeave}>
-              <LogOut size={14} />
-              Leave
-            </button>
           </div>
+          <button type="button" className="icon-btn" aria-label="Leave" onClick={onLeave}>
+            <LogOut size={17} />
+          </button>
+        </header>
 
-          <div className="seat-list">
-            {room.players.map((p) => (
-              <div key={p.id} className="seat-row">
-                <div className="seat-left">
-                  <div className={`avatar-dot ${p.isBot ? 'bot' : ''}`}>
-                    {p.isBot ? <Bot size={16} /> : p.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.94rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>{p.name}</span>
-                      {p.id === room.viewerId && <span className="pill">You</span>}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                      {p.isHost && (
-                        <span className="pill pill-gold">
-                          <Crown size={10} /> Host
-                        </span>
-                      )}
-                      {p.isBot && <span className="pill">AI Bot</span>}
-                      {!p.isHost && !p.isBot && (
-                        <span className={`pill ${p.transport === 'p2p' ? 'pill-green' : ''}`}>
-                          <Wifi size={10} />
-                          {p.transport === 'p2p'
-                            ? 'P2P'
-                            : p.transport === 'relay'
-                              ? 'Relay'
-                              : 'Syncing'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className={`pill ${p.isReady || p.isHost ? 'pill-green' : ''}`}>
-                    {p.isReady || p.isHost ? 'Ready' : 'Waiting'}
-                  </span>
+        <div className="lobby-grid">
+          <section className="lobby-card">
+            <div className="section-title">
+              Players <span>{room.players.length}/4</span>
+            </div>
+            <div className="seat-grid">
+              {room.players.map((p, idx) => (
+                <div
+                  key={p.id}
+                  className={`seat-tile${p.isReady || p.isHost ? ' is-ready' : ''}`}
+                  style={{ '--d': `${idx * 60}ms` } as CSSProperties}
+                >
                   {isHost && !p.isHost && (
                     <button
                       type="button"
-                      className="btn-icon"
-                      title={`Remove ${p.name}`}
+                      className="tile-x"
+                      aria-label={`Remove ${p.name}`}
                       onClick={() => onIntent({ type: 'REMOVE_PLAYER', playerId: p.id })}
                     >
-                      <X size={14} />
+                      <X size={13} />
                     </button>
                   )}
+                  <Avatar name={p.name} isBot={p.isBot} size="lg" />
+                  <div className="tile-name">
+                    {p.name}
+                    {p.id === room.viewerId && <span className="you-tag">you</span>}
+                  </div>
+                  <div className="tile-tags">
+                    {p.isHost && (
+                      <span className="tag tag--gold">
+                        <Crown size={10} /> host
+                      </span>
+                    )}
+                    {p.isBot && <span className="tag">bot</span>}
+                    {!p.isHost && !p.isBot && (
+                      <span className={`tag${p.transport === 'p2p' ? ' tag--mint' : ''}`}>
+                        <Wifi size={10} />
+                        {p.transport === 'p2p' ? 'p2p' : p.transport === 'relay' ? 'relay' : 'linking'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="tile-ready">{p.isReady || p.isHost ? 'Ready' : 'Not ready'}</div>
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {Array.from({ length: emptySlots }).map((_, i) => (
-              <div key={`empty_${i}`} className="seat-row empty">
-                <span style={{ fontSize: '0.86rem' }}>
-                  Open seat (auto-fills with Bot on start)
-                </span>
-                {isHost && (
+              {Array.from({ length: emptySlots }).map((_, i) =>
+                isHost ? (
                   <button
+                    key={`empty_${i}`}
                     type="button"
-                    className="btn btn-secondary btn-sm"
+                    className="seat-tile is-empty"
                     onClick={() => onIntent({ type: 'ADD_BOT' })}
                   >
-                    <UserPlus size={14} />
-                    Add Bot
+                    <span className="empty-plus">
+                      <Plus size={20} />
+                    </span>
+                    <div className="tile-name">Open seat</div>
+                    <div className="tile-ready">Tap to add a bot</div>
                   </button>
-                )}
-              </div>
-            ))}
-          </div>
+                ) : (
+                  <div key={`empty_${i}`} className="seat-tile is-empty">
+                    <span className="empty-plus">
+                      <Plus size={20} />
+                    </span>
+                    <div className="tile-name">Open seat</div>
+                    <div className="tile-ready">A bot fills in</div>
+                  </div>
+                )
+              )}
+            </div>
 
-          {error && <div className="error-banner" style={{ marginBottom: 14 }}>{error}</div>}
+            {error && <div className="alert">{error}</div>}
 
-          <div style={{ display: 'flex', gap: 10 }}>
             {isHost ? (
               <button
                 type="button"
-                className="btn btn-primary"
-                style={{ flex: 1 }}
+                className="btn btn-primary btn-lg btn-block"
                 disabled={!allReady}
                 onClick={() => onIntent({ type: 'START_GAME' })}
               >
-                <Play size={16} />
-                {allReady ? 'Deal & Start Match' : 'Waiting for Players to Ready…'}
+                <Sparkles size={17} />
+                {allReady ? 'Deal the cards' : 'Waiting on everyone…'}
               </button>
             ) : (
               <button
                 type="button"
-                className={`btn ${me?.isReady ? 'btn-secondary' : 'btn-primary'}`}
-                style={{ flex: 1 }}
+                className={`btn btn-lg btn-block ${me?.isReady ? 'btn-ghost' : 'btn-primary'}`}
                 onClick={() => onIntent({ type: 'TOGGLE_READY' })}
               >
-                <Check size={16} />
-                {me?.isReady ? 'Cancel Ready' : 'Ready Up'}
+                <Check size={17} />
+                {me?.isReady ? "I'm not ready" : "I'm ready"}
               </button>
             )}
-          </div>
-        </div>
+          </section>
 
-        {/* Right: Match Rules */}
-        <div className="panel lobby-card">
-          <h2 className="rules-section-title">
-            <SlidersHorizontal size={15} />
-            Table Rules {!isHost && <span className="pill" style={{ marginLeft: 'auto' }}>Host Controlled</span>}
-          </h2>
+          <section className="lobby-card">
+            <div className="section-title">
+              House rules {!isHost && <span>host decides</span>}
+            </div>
 
-          <div className="rule-row">
-            <div>
-              <div className="rule-label">Target Score</div>
-              <div className="rule-desc">Points to win match (+3/+2/+1/0 per round)</div>
-            </div>
-            <div className="seg-control">
-              {TARGET_SCORES.map((pts) => (
-                <button
-                  key={pts}
-                  type="button"
-                  disabled={!isHost}
-                  className={`seg-btn ${room.rules.pointsToWin === pts ? 'active' : ''}`}
-                  onClick={() => updateRule({ pointsToWin: pts })}
-                >
-                  {pts}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="rule-row">
-            <div>
-              <div className="rule-label">Turn Timer</div>
-              <div className="rule-desc">Auto-pass or lead on timeout</div>
-            </div>
-            <div className="seg-control">
-              {TURN_TIMERS.map((t) => (
-                <button
-                  key={t.value}
-                  type="button"
-                  disabled={!isHost}
-                  className={`seg-btn ${room.rules.turnDuration === t.value ? 'active' : ''}`}
-                  onClick={() => updateRule({ turnDuration: t.value })}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="rule-row">
-            <div>
-              <div className="rule-label">Bomb Single 2</div>
-              <div className="rule-desc">Bomber or Straight Flush slams any single 2</div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={room.rules.enableBombsSingle}
-              disabled={!isHost}
-              className={`toggle ${room.rules.enableBombsSingle ? 'on' : ''}`}
-              onClick={() => updateRule({ enableBombsSingle: !room.rules.enableBombsSingle })}
-            />
-          </div>
-
-          <div className="rule-row">
-            <div>
-              <div className="rule-label">Bomb Pair of 2s</div>
-              <div className="rule-desc">Bomber or Straight Flush slams a pair of 2s</div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={room.rules.enableBombsPair}
-              disabled={!isHost}
-              className={`toggle ${room.rules.enableBombsPair ? 'on' : ''}`}
-              onClick={() => updateRule({ enableBombsPair: !room.rules.enableBombsPair })}
-            />
-          </div>
-
-          <div className="rule-row">
-            <div>
-              <div className="rule-label">Double Deck (104 Cards)</div>
-              <div className="rule-desc">Two decks mixed; lowest unique card starts</div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={room.rules.enableDoubleDeck}
-              disabled={!isHost}
-              className={`toggle ${room.rules.enableDoubleDeck ? 'on' : ''}`}
-              onClick={() => updateRule({ enableDoubleDeck: !room.rules.enableDoubleDeck })}
-            />
-          </div>
-
-          {room.rules.enableDoubleDeck && (
-            <div className="rule-row">
-              <div>
-                <div className="rule-label">26-Card Hands + 3♦ Dice Duel</div>
-                <div className="rule-desc">Deal all 104 cards; dice duel if two hold 3♦</div>
+            <div className="rule">
+              <div className="rule-text">
+                <b>Play to</b>
+                <small>points to win the match</small>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={room.rules.doubleDeck26Cards}
+              <div className="seg">
+                {TARGET_SCORES.map((pts) => (
+                  <button
+                    key={pts}
+                    type="button"
+                    disabled={!isHost}
+                    className={room.rules.pointsToWin === pts ? 'is-on' : ''}
+                    onClick={() => updateRule({ pointsToWin: pts })}
+                  >
+                    {pts}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rule">
+              <div className="rule-text">
+                <b>Turn timer</b>
+                <small>auto-pass when it runs out</small>
+              </div>
+              <div className="seg">
+                {TURN_TIMERS.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    disabled={!isHost}
+                    className={room.rules.turnDuration === t.value ? 'is-on' : ''}
+                    onClick={() => updateRule({ turnDuration: t.value })}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rule">
+              <div className="rule-text">
+                <b>Bomb a single 2</b>
+                <small>Bomber / Straight Flush beats a lone 2</small>
+              </div>
+              <Toggle
+                label="Bomb a single 2"
+                on={room.rules.enableBombsSingle}
                 disabled={!isHost}
-                className={`toggle ${room.rules.doubleDeck26Cards ? 'on' : ''}`}
-                onClick={() => updateRule({ doubleDeck26Cards: !room.rules.doubleDeck26Cards })}
+                onClick={() => updateRule({ enableBombsSingle: !room.rules.enableBombsSingle })}
               />
             </div>
-          )}
 
-          <div className="rule-row">
-            <div>
-              <div className="rule-label">Card Trading</div>
-              <div className="rule-desc">Request a card on your turn; holder sends it + 1 extra card</div>
+            <div className="rule">
+              <div className="rule-text">
+                <b>Bomb a pair of 2s</b>
+                <small>same, but against a pair</small>
+              </div>
+              <Toggle
+                label="Bomb a pair of 2s"
+                on={room.rules.enableBombsPair}
+                disabled={!isHost}
+                onClick={() => updateRule({ enableBombsPair: !room.rules.enableBombsPair })}
+              />
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={room.rules.enableTrading}
-              disabled={!isHost}
-              className={`toggle ${room.rules.enableTrading ? 'on' : ''}`}
-              onClick={() => updateRule({ enableTrading: !room.rules.enableTrading })}
-            />
-          </div>
+
+            <div className="rule">
+              <div className="rule-text">
+                <b>Double deck</b>
+                <small>104 cards · lowest unique card leads</small>
+              </div>
+              <Toggle
+                label="Double deck"
+                on={room.rules.enableDoubleDeck}
+                disabled={!isHost}
+                onClick={() => updateRule({ enableDoubleDeck: !room.rules.enableDoubleDeck })}
+              />
+            </div>
+
+            {room.rules.enableDoubleDeck && (
+              <div className="rule rule--nested">
+                <div className="rule-text">
+                  <b>26-card hands</b>
+                  <small>deal everything · dice duel on twin 3♦</small>
+                </div>
+                <Toggle
+                  label="26-card hands"
+                  on={room.rules.doubleDeck26Cards}
+                  disabled={!isHost}
+                  onClick={() => updateRule({ doubleDeck26Cards: !room.rules.doubleDeck26Cards })}
+                />
+              </div>
+            )}
+
+            <div className="rule">
+              <div className="rule-text">
+                <b>Card trading</b>
+                <small>ask for a card; they send it + one extra</small>
+              </div>
+              <Toggle
+                label="Card trading"
+                on={room.rules.enableTrading}
+                disabled={!isHost}
+                onClick={() => updateRule({ enableTrading: !room.rules.enableTrading })}
+              />
+            </div>
+          </section>
         </div>
       </div>
     </div>

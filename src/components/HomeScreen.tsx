@@ -1,5 +1,15 @@
-import { useState } from 'react';
-import { Bot, BookOpen, LogIn, Plus, Sparkles, X } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { ArrowRight, Bot, HelpCircle, Users, X } from 'lucide-react';
+import type { Card } from '@engine/types';
+import { PlayingCard } from './PlayingCard';
+
+const HERO_CARDS: Card[] = [
+  { id: 'h1', rank: 'Q', suit: 'C' },
+  { id: 'h2', rank: 'K', suit: 'H' },
+  { id: 'h3', rank: '2', suit: 'S' },
+  { id: 'h4', rank: 'A', suit: 'D' },
+  { id: 'h5', rank: 'J', suit: 'S' },
+];
 
 interface HomeScreenProps {
   initialRoomCode: string;
@@ -11,62 +21,63 @@ interface HomeScreenProps {
   onSolo: (name: string) => void;
 }
 
-export function HomeScreen({
-  initialRoomCode,
-  initialName,
-  busy,
-  error,
-  onHost,
-  onJoin,
-  onSolo,
-}: HomeScreenProps) {
+export function HomeScreen({ initialRoomCode, initialName, busy, error, onHost, onJoin, onSolo }: HomeScreenProps) {
   const [name, setName] = useState(initialName);
   const [code, setCode] = useState(initialRoomCode);
   const [showRules, setShowRules] = useState(false);
 
   const cleanName = name.trim() || 'Player';
   const cleanCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  const invited = initialRoomCode.length === 4;
 
   return (
-    <div className="home-wrap">
-      <div className="panel home-card">
-        <div className="brand-header">
-          <div className="brand-emblem">
-            <Sparkles size={13} />
-            <span>Big Two · Host &amp; Peer</span>
-          </div>
-          <h1 className="brand-title">Capsa Banting</h1>
-          <p className="brand-sub">Fast, peer-to-peer Indonesian Big Two on the emerald felt.</p>
+    <div className="screen">
+      <div className="home">
+        <div className="hero-fan" aria-hidden="true">
+          {HERO_CARDS.map((card, i) => (
+            <div key={card.id} className="hero-card" style={{ '--off': i - 2 } as CSSProperties}>
+              <PlayingCard card={card} size="lg" />
+            </div>
+          ))}
         </div>
 
-        <div className="field-group">
-          <label className="field-label" htmlFor="player-name">
-            Display Name
+        <div className="home-card">
+          <h1 className="brand">
+            Capsa <span>Banting</span>
+          </h1>
+          <p className="tagline">Grab three friends, shuffle up, and slam those 2s.</p>
+
+          <label className="field">
+            <span className="field-label">What should we call you?</span>
+            <input
+              className="input"
+              type="text"
+              maxLength={20}
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </label>
-          <input
-            id="player-name"
-            className="input"
-            type="text"
-            maxLength={20}
-            placeholder="Enter your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
 
-        <div className="home-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy}
-            onClick={() => onHost(cleanName)}
-          >
-            <Plus size={18} />
-            {busy ? 'Creating Room…' : 'Host Multiplayer Room'}
-          </button>
+          {invited ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-lg"
+              disabled={busy}
+              onClick={() => onJoin(cleanCode, cleanName)}
+            >
+              Join table {cleanCode}
+              <ArrowRight size={18} />
+            </button>
+          ) : (
+            <button type="button" className="btn btn-primary btn-lg" disabled={busy} onClick={() => onHost(cleanName)}>
+              <Users size={18} />
+              {busy ? 'Setting the table…' : 'Host a table'}
+            </button>
+          )}
 
           <form
-            className="join-row"
+            className="join"
             onSubmit={(e) => {
               e.preventDefault();
               if (cleanCode.length === 4 && !busy) onJoin(cleanCode, cleanName);
@@ -77,85 +88,65 @@ export function HomeScreen({
               type="text"
               maxLength={4}
               placeholder="CODE"
-              aria-label="Room Code"
+              aria-label="Room code"
               value={cleanCode}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
             />
-            <button
-              type="submit"
-              className="btn btn-secondary"
-              disabled={busy || cleanCode.length !== 4}
-            >
-              <LogIn size={16} />
+            <button type="submit" className="btn btn-ghost" disabled={busy || cleanCode.length !== 4}>
               Join
+              <ArrowRight size={16} />
             </button>
           </form>
 
-          <div className="divider">or</div>
-
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={busy}
-            onClick={() => onSolo(cleanName)}
-          >
-            <Bot size={17} />
-            Play Solo vs Bots (Offline)
+          <button type="button" className="link-btn" disabled={busy} onClick={() => onSolo(cleanName)}>
+            <Bot size={16} />
+            Or practice against bots
           </button>
+
+          {error && <div className="alert">{error}</div>}
         </div>
 
-        {error && <div className="error-banner">{error}</div>}
-
-        <div className="home-footer">
-          <span>WebRTC P2P · Cloudflare Signaling</span>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowRules(true)}
-          >
-            <BookOpen size={14} />
-            Rules &amp; Scoring
+        <div className="home-foot">
+          <span>Peer-to-peer · no sign-up</span>
+          <button type="button" className="link-btn link-btn--sm" onClick={() => setShowRules(true)}>
+            <HelpCircle size={14} />
+            How to play
           </button>
         </div>
       </div>
 
       {showRules && (
         <div className="modal-backdrop" onClick={() => setShowRules(false)}>
-          <div className="panel modal-box" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 className="modal-title">Capsa Banting Rules</h2>
-              <button type="button" className="btn-icon" onClick={() => setShowRules(false)}>
-                <X size={16} />
-              </button>
-            </div>
-            <p className="modal-sub">4 players · 13 cards each (or 26 in Double Deck mode)</p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              <div>
-                <strong style={{ color: 'var(--text-primary)' }}>Card Order:</strong>{' '}
-                Rank <code>3 &lt; 4 &lt; … &lt; A &lt; 2</code> · Suit <code>♦ &lt; ♣ &lt; ♥ &lt; ♠</code>.
-                The holder of <strong>3♦</strong> leads the opening play and must include it.
-              </div>
-              <div>
-                <strong style={{ color: 'var(--text-primary)' }}>Combinations:</strong>{' '}
-                Single, Pair, Tris, or 5-Card hands ranked{' '}
-                <code>Straight &lt; Flush &lt; Full House &lt; Bomber (4+1) &lt; Straight Flush</code>.
-                Flushes rank by <strong>suit first</strong>, then highest card. Straights span{' '}
-                <code>A-2-3-4-5</code> (lowest) up to <code>J-Q-K-A-2</code> (highest).
-              </div>
-              <div>
-                <strong style={{ color: 'var(--text-primary)' }}>Bombing 2s:</strong>{' '}
-                When enabled, a <strong>Bomber</strong> or <strong>Straight Flush</strong> can slam a single <code>2</code> or pair of <code>2</code>s.
-              </div>
-              <div>
-                <strong style={{ color: 'var(--text-primary)' }}>Hibah &amp; Undo Pass:</strong>{' '}
-                If a trick winner empties their hand, lead passes clockwise (Hibah). You can undo your pass before the next player acts.
-              </div>
-              <div>
-                <strong style={{ color: 'var(--text-primary)' }}>Scoring:</strong>{' '}
-                1st gets <strong>+3</strong>, 2nd <strong>+2</strong>, 3rd <strong>+1</strong>, 4th <strong>0</strong>. First to reach target points (default 15) wins the match.
-              </div>
-            </div>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="modal-close" aria-label="Close" onClick={() => setShowRules(false)}>
+              <X size={16} />
+            </button>
+            <div className="eyebrow">Quick rules</div>
+            <h2 className="modal-title">How Capsa works</h2>
+            <ul className="rules-list">
+              <li>
+                <b>Goal:</b> be the first to empty your hand. 4 players, 13 cards each.
+              </li>
+              <li>
+                <b>Order:</b> 3 is lowest, 2 is highest. Suits go ♦ &lt; ♣ &lt; ♥ &lt; ♠.
+              </li>
+              <li>
+                <b>Opening:</b> whoever holds 3♦ leads, and has to play it.
+              </li>
+              <li>
+                <b>Combos:</b> singles, pairs, triples, or five-card hands — Straight &lt; Flush &lt; Full House &lt;
+                Bomber &lt; Straight Flush. Flushes compare by suit first.
+              </li>
+              <li>
+                <b>Bombs:</b> a Bomber or Straight Flush can slam a single 2 or a pair of 2s.
+              </li>
+              <li>
+                <b>Hibah:</b> win a trick with your last card and the lead passes to the next player.
+              </li>
+              <li>
+                <b>Scoring:</b> 1st +3, 2nd +2, 3rd +1, last 0. First to the target wins.
+              </li>
+            </ul>
           </div>
         </div>
       )}

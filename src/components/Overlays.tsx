@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeftRight, Dices, Play, Send, Trophy, X } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { ArrowLeftRight, Play, Send, Trophy, X } from 'lucide-react';
 import { RANKS, SUITS, SUIT_SYMBOLS, cardToString } from '@engine/cards';
 import type {
   ActivityEntry,
@@ -10,63 +10,70 @@ import type {
   SanitizedRoomState,
   Suit,
 } from '@engine/types';
+import { Avatar } from './Avatar';
+import { Confetti } from './Confetti';
 import { PlayingCard } from './PlayingCard';
 
-// ==================== DICE DUEL MODAL ====================
+// ==================== DICE DUEL ====================
 
-export function DiceDuelModal({
-  showdown,
-  onDismiss,
-}: {
-  showdown: DiceShowdown;
-  onDismiss: () => void;
-}) {
+const PIPS: Record<number, number[]> = {
+  1: [4],
+  2: [0, 8],
+  3: [0, 4, 8],
+  4: [0, 2, 6, 8],
+  5: [0, 2, 4, 6, 8],
+  6: [0, 2, 3, 5, 6, 8],
+};
+
+function Die({ value, delay = 0 }: { value: number; delay?: number }) {
+  const on = PIPS[value] ?? [];
+  return (
+    <div className="die" style={{ animationDelay: `${delay}ms` }}>
+      {Array.from({ length: 9 }).map((_, i) => (
+        <span key={i} className={`die-pip${on.includes(i) ? ' is-on' : ''}`} />
+      ))}
+    </div>
+  );
+}
+
+export function DiceDuelModal({ showdown, onDismiss }: { showdown: DiceShowdown; onDismiss: () => void }) {
+  const aWins = showdown.winnerId === showdown.playerA.id;
   return (
     <div className="modal-backdrop">
-      <div className="panel modal-box" style={{ textAlign: 'center' }}>
-        <div className="brand-emblem" style={{ marginBottom: 8 }}>
-          <Dices size={14} />
-          <span>3♦ Tiebreaker Duel</span>
-        </div>
-        <h2 className="modal-title">{showdown.winnerName} Leads the Round!</h2>
-        <p className="modal-sub">{showdown.reason}</p>
+      <div className="modal modal--center">
+        <div className="eyebrow">3♦ tiebreaker</div>
+        <h2 className="modal-title">Dice duel!</h2>
+        <p className="modal-sub">Both of you hold 3♦ — highest roll leads the round.</p>
 
-        <div className="dice-arena">
-          <div className={`dice-box ${showdown.winnerId === showdown.playerA.id ? 'winner' : ''}`}>
-            <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{showdown.playerA.name}</div>
-            <div className="dice-num">{showdown.playerA.roll}</div>
-            {showdown.winnerId === showdown.playerA.id && (
-              <span className="pill pill-gold">Winner</span>
-            )}
+        <div className="duel">
+          <div className={`duel-side${aWins ? ' is-winner' : ''}`}>
+            <Avatar name={showdown.playerA.name} size="md" />
+            <div className="duel-name">{showdown.playerA.name}</div>
+            <Die value={showdown.playerA.roll} />
           </div>
-
-          <div style={{ fontWeight: 800, color: 'var(--text-muted)', fontSize: '0.9rem' }}>VS</div>
-
-          <div className={`dice-box ${showdown.winnerId === showdown.playerB.id ? 'winner' : ''}`}>
-            <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{showdown.playerB.name}</div>
-            <div className="dice-num">{showdown.playerB.roll}</div>
-            {showdown.winnerId === showdown.playerB.id && (
-              <span className="pill pill-gold">Winner</span>
-            )}
+          <div className="duel-vs">vs</div>
+          <div className={`duel-side${!aWins ? ' is-winner' : ''}`}>
+            <Avatar name={showdown.playerB.name} size="md" />
+            <div className="duel-name">{showdown.playerB.name}</div>
+            <Die value={showdown.playerB.roll} delay={120} />
           </div>
         </div>
 
         {showdown.rollsHistory.length > 1 && (
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 14 }}>
-            Rerolled {showdown.rollsHistory.length - 1} tie
-            {showdown.rollsHistory.length > 2 ? 's' : ''} before deciding.
+          <p className="fine-print">
+            {showdown.rollsHistory.length - 1} tied roll{showdown.rollsHistory.length > 2 ? 's' : ''} before a winner.
           </p>
         )}
 
         <button type="button" className="btn btn-primary" onClick={onDismiss}>
-          Continue to Table
+          {showdown.winnerName} leads — let's go
         </button>
       </div>
     </div>
   );
 }
 
-// ==================== TRADE REQUEST PICKER MODAL ====================
+// ==================== TRADE: REQUEST ====================
 
 export function TradeRequestModal({
   myCards,
@@ -77,51 +84,44 @@ export function TradeRequestModal({
   onRequest: (rank: Rank, suit: Suit) => void;
   onClose: () => void;
 }) {
-  const heldSet = new Set(myCards.map((c) => `${c.rank}_${c.suit}`));
-
+  const held = new Set(myCards.map((c) => `${c.rank}_${c.suit}`));
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="panel modal-box" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <ArrowLeftRight size={18} /> Request a Card
-          </h2>
-          <button type="button" className="btn-icon" onClick={onClose}>
-            <X size={16} />
-          </button>
+      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>
+          <X size={16} />
+        </button>
+        <div className="eyebrow">
+          <ArrowLeftRight size={12} /> Card trade
         </div>
+        <h2 className="modal-title">Which card do you want?</h2>
         <p className="modal-sub">
-          Pick a card you do not hold. Whoever holds it may decline, or send it to you along with 1 extra card of their choice.
+          Whoever holds it can say no — or hand it over along with one card they don't want.
         </p>
-
-        {SUITS.map((suit) => {
-          const isRed = suit === 'D' || suit === 'H';
-          return (
-            <div key={suit} className="trade-grid">
-              {RANKS.map((rank) => {
-                const owned = heldSet.has(`${rank}_${suit}`);
-                return (
-                  <button
-                    key={`${rank}_${suit}`}
-                    type="button"
-                    disabled={owned}
-                    className={`trade-cell ${isRed ? 'red' : 'black'}`}
-                    onClick={() => onRequest(rank, suit)}
-                  >
-                    {rank}
-                    {SUIT_SYMBOLS[suit]}
-                  </button>
-                );
-              })}
+        <div className="trade-board">
+          {SUITS.map((suit) => (
+            <div key={suit} className="trade-row">
+              {RANKS.map((rank) => (
+                <button
+                  key={`${rank}_${suit}`}
+                  type="button"
+                  disabled={held.has(`${rank}_${suit}`)}
+                  className={`trade-cell ${suit === 'D' || suit === 'H' ? 'is-red' : 'is-black'}`}
+                  onClick={() => onRequest(rank, suit)}
+                >
+                  {rank}
+                  <small>{SUIT_SYMBOLS[suit]}</small>
+                </button>
+              ))}
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-// ==================== INCOMING TRADE FULFILL MODAL ====================
+// ==================== TRADE: RESPOND ====================
 
 export function TradeRespondModal({
   requesterName,
@@ -137,21 +137,20 @@ export function TradeRespondModal({
   onDecline: () => void;
 }) {
   const [extraId, setExtraId] = useState<string | null>(null);
-  const candidates = myCards.filter(
-    (c) => !(c.rank === requestedCard.rank && c.suit === requestedCard.suit)
-  );
+  const candidates = myCards.filter((c) => !(c.rank === requestedCard.rank && c.suit === requestedCard.suit));
 
   return (
     <div className="modal-backdrop">
-      <div className="panel modal-box" style={{ maxWidth: 620 }}>
-        <h2 className="modal-title">Incoming Trade Request</h2>
-        <p className="modal-sub">
-          <strong>{requesterName}</strong> wants your{' '}
-          <strong style={{ color: 'var(--gold-bright)' }}>{cardToString(requestedCard)}</strong>.
-          Accept by picking 1 extra unwanted card to send with it, or decline.
-        </p>
+      <div className="modal modal--wide">
+        <div className="eyebrow">
+          <ArrowLeftRight size={12} /> Incoming trade
+        </div>
+        <h2 className="modal-title">
+          {requesterName} wants your <span className="gold">{cardToString(requestedCard)}</span>
+        </h2>
+        <p className="modal-sub">Pick one card to dump on them as part of the deal — or just say no.</p>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', margin: '14px 0 18px' }}>
+        <div className="trade-pick">
           {candidates.map((card) => (
             <PlayingCard
               key={card.id}
@@ -164,9 +163,9 @@ export function TradeRespondModal({
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button type="button" className="btn btn-danger" onClick={onDecline}>
-            Decline
+        <div className="modal-actions">
+          <button type="button" className="btn btn-ghost" onClick={onDecline}>
+            No thanks
           </button>
           <button
             type="button"
@@ -174,7 +173,7 @@ export function TradeRespondModal({
             disabled={!extraId}
             onClick={() => extraId && onFulfill(extraId)}
           >
-            Fulfill Trade (Send 2 Cards)
+            Send both cards
           </button>
         </div>
       </div>
@@ -182,7 +181,7 @@ export function TradeRespondModal({
   );
 }
 
-// ==================== ROUND OVER / GAME OVER MODAL ====================
+// ==================== SCOREBOARD ====================
 
 export function ScoreboardModal({
   room,
@@ -196,77 +195,76 @@ export function ScoreboardModal({
   onLeave: () => void;
 }) {
   const isGameOver = room.gameState === 'gameover';
-  const sorted = [...room.players].sort((a, b) => {
-    if (isGameOver) return b.score - a.score;
-    return (a.finishRank ?? 99) - (b.finishRank ?? 99);
-  });
-  const champion = sorted[0];
+  const sorted = [...room.players].sort((a, b) =>
+    isGameOver ? b.score - a.score : (a.finishRank ?? 99) - (b.finishRank ?? 99)
+  );
+  const top = sorted[0];
+  const me = room.players.find((p) => p.id === room.viewerId);
+  const iWon = isGameOver ? top?.id === room.viewerId : me?.finishRank === 1;
+  const headline = isGameOver
+    ? iWon
+      ? 'You won the match!'
+      : `${top?.name} takes the match`
+    : iWon
+      ? 'You went out first!'
+      : `${top?.name} wins round ${room.roundNumber}`;
 
   return (
     <div className="modal-backdrop">
-      <div className="panel modal-box">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <Trophy size={24} color="var(--gold-bright)" />
-          <h2 className="modal-title" style={{ margin: 0 }}>
-            {isGameOver
-              ? `${champion?.name} Wins the Match!`
-              : `Round ${room.roundNumber} Complete`}
-          </h2>
+      {iWon && <Confetti />}
+      <div className="modal">
+        <div className="score-hero">
+          <div className="trophy">
+            <Trophy size={26} />
+          </div>
+          <div>
+            <div className="eyebrow">{isGameOver ? 'Match over' : `Round ${room.roundNumber}`}</div>
+            <h2 className="modal-title">{headline}</h2>
+          </div>
         </div>
-        <p className="modal-sub">
-          {isGameOver
-            ? `Reached target of ${room.rules.pointsToWin} points.`
-            : `First to ${room.rules.pointsToWin} points wins the match.`}
+
+        <ol className="standings">
+          {sorted.map((p, idx) => {
+            const pct = Math.min(100, (p.score / Math.max(1, room.rules.pointsToWin)) * 100);
+            const place = isGameOver ? idx + 1 : (p.finishRank ?? idx + 1);
+            return (
+              <li
+                key={p.id}
+                className={`standing${p.id === room.viewerId ? ' is-me' : ''}`}
+                style={{ '--d': `${idx * 70}ms` } as CSSProperties}
+              >
+                <span className={`medal medal--${place}`}>{place}</span>
+                <Avatar name={p.name} isBot={p.isBot} size="sm" />
+                <div className="standing-main">
+                  <div className="standing-name">
+                    {p.name}
+                    {p.id === room.viewerId && <span className="you-tag">you</span>}
+                  </div>
+                  <div className="standing-bar">
+                    <span style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+                <span className="standing-gain">+{p.roundPoints}</span>
+                <span className="standing-total">{p.score}</span>
+              </li>
+            );
+          })}
+        </ol>
+        <p className="fine-print">
+          +3 / +2 / +1 / 0 per round · first to {room.rules.pointsToWin} wins
         </p>
 
-        <table className="score-table">
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Player</th>
-              <th>Round</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((p, idx) => (
-              <tr key={p.id} className={idx === 0 ? 'winner-row' : ''}>
-                <td>
-                  <span className={`pill ${p.finishRank === 1 ? 'pill-gold' : ''}`}>
-                    #{p.finishRank ?? idx + 1}
-                  </span>
-                </td>
-                <td style={{ fontWeight: 700 }}>
-                  {p.name} {p.id === room.viewerId ? '(You)' : ''}
-                </td>
-                <td>
-                  <span className="pill pill-green">+{p.roundPoints}</span>
-                </td>
-                <td style={{ fontWeight: 800, color: 'var(--gold-bright)' }}>
-                  {p.score} / {room.rules.pointsToWin}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between' }}>
-          <button type="button" className="btn btn-secondary" onClick={onLeave}>
-            Leave Table
+        <div className="modal-actions">
+          <button type="button" className="btn btn-ghost" onClick={onLeave}>
+            Leave table
           </button>
           {isHost ? (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => onIntent({ type: 'NEXT_ROUND' })}
-            >
-              <Play size={16} />
-              {isGameOver ? 'Play New Match' : `Deal Round ${room.roundNumber + 1}`}
+            <button type="button" className="btn btn-primary" onClick={() => onIntent({ type: 'NEXT_ROUND' })}>
+              <Play size={15} />
+              {isGameOver ? 'Rematch' : 'Deal next round'}
             </button>
           ) : (
-            <span className="pill" style={{ padding: '8px 14px' }}>
-              Waiting for Host…
-            </span>
+            <span className="waiting-dots">Waiting for host</span>
           )}
         </div>
       </div>
@@ -274,7 +272,7 @@ export function ScoreboardModal({
   );
 }
 
-// ==================== ACTIVITY & CHAT DRAWER ====================
+// ==================== CHAT DRAWER ====================
 
 export function ActivityDrawer({
   entries,
@@ -286,39 +284,20 @@ export function ActivityDrawer({
   onClose: () => void;
 }) {
   const [text, setText] = useState('');
+  const ordered = [...entries].reverse();
 
   return (
     <div className="drawer-backdrop" onClick={onClose}>
-      <div className="drawer-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-header">
-          <strong style={{ fontSize: '0.92rem', color: 'var(--gold-bright)' }}>
-            Table Log &amp; Chat
-          </strong>
-          <button type="button" className="btn-icon" onClick={onClose}>
+      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head">
+          <strong>Table talk</strong>
+          <button type="button" className="icon-btn icon-btn--sm" aria-label="Close" onClick={onClose}>
             <X size={15} />
           </button>
         </div>
 
-        <div className="drawer-feed">
-          {entries.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center', marginTop: 20 }}>
-              No activity yet.
-            </div>
-          )}
-          {entries.map((entry) => (
-            <div key={entry.id} className={`feed-item ${entry.system ? 'system' : ''}`}>
-              {!entry.system && (
-                <strong style={{ color: 'var(--gold-bright)', marginRight: 6 }}>
-                  {entry.senderName}:
-                </strong>
-              )}
-              <span>{entry.text}</span>
-            </div>
-          ))}
-        </div>
-
         <form
-          className="drawer-input"
+          className="drawer-form"
           onSubmit={(e) => {
             e.preventDefault();
             const clean = text.trim();
@@ -331,15 +310,34 @@ export function ActivityDrawer({
             className="input"
             type="text"
             maxLength={200}
-            placeholder="Say something…"
+            placeholder="Talk some trash…"
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          <button type="submit" className="btn btn-primary btn-sm" disabled={!text.trim()}>
-            <Send size={14} />
+          <button type="submit" className="icon-btn icon-btn--gold" aria-label="Send" disabled={!text.trim()}>
+            <Send size={15} />
           </button>
         </form>
-      </div>
+
+        <div className="drawer-feed">
+          {ordered.length === 0 && <div className="drawer-empty">Quiet table so far.</div>}
+          {ordered.map((entry) =>
+            entry.system ? (
+              <div key={entry.id} className="feed-sys">
+                {entry.text}
+              </div>
+            ) : (
+              <div key={entry.id} className="feed-msg">
+                <Avatar name={entry.senderName} size="sm" />
+                <div>
+                  <div className="feed-who">{entry.senderName}</div>
+                  <div className="feed-text">{entry.text}</div>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      </aside>
     </div>
   );
 }
