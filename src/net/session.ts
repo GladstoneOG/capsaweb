@@ -5,10 +5,13 @@ import {
   RTC_CONFIG,
   type ConnectionStatus,
   type HostToPeerMessage,
+  type LobbyListing,
   type LocalTransportState,
   type PeerToHostMessage,
   type SignalServerMessage,
 } from './protocol';
+
+export type { LobbyListing };
 
 export interface SessionSnapshot {
   room: SanitizedRoomState | null;
@@ -319,6 +322,7 @@ export class HostMultiplayerSession implements GameSession {
   private hostId: string;
   private roomCode: string;
   private destroyed = false;
+  private lastMetaKey = '';
   private snapshot: SessionSnapshot;
 
   constructor(roomCode: string, hostName: string) {
@@ -399,6 +403,7 @@ export class HostMultiplayerSession implements GameSession {
     switch (msg.type) {
       case 'welcome':
         this.updateLocalSnapshot('connected', null);
+        this.syncLobbyMeta(true);
         break;
 
       case 'error':
@@ -638,7 +643,30 @@ export class HostMultiplayerSession implements GameSession {
       });
     }
 
+    this.syncLobbyMeta();
     this.automation.schedule();
+  }
+
+  private syncLobbyMeta(force = false): void {
+    const s = this.engine.getState();
+    const host = s.players.find((p) => p.isHost);
+    const parts: string[] = [];
+    if (s.rules.enableDoubleDeck) {
+      parts.push(s.rules.doubleDeck26Cards ? '2× Deck (26)' : '2× Deck (13)');
+    }
+    if (s.rules.enableTrading) parts.push('Trading');
+    parts.push(`First to ${s.rules.pointsToWin}`);
+    const rulesSummary = parts.join(' · ');
+    const metaKey = `${host?.name ?? ''}|${s.players.length}|${s.gameState}|${rulesSummary}`;
+    if (!force && metaKey === this.lastMetaKey) return;
+    this.lastMetaKey = metaKey;
+    this.sendSignal({
+      type: 'room-meta',
+      hostName: host?.name ?? 'Host',
+      playerCount: s.players.length,
+      gameState: s.gameState,
+      rulesSummary,
+    });
   }
 
   private updateLocalSnapshot(status: ConnectionStatus, error: string | null): void {
@@ -722,19 +750,25 @@ export class PeerMultiplayerSession implements GameSession {
     error: null,
   };
 
-  constructor(roomCode: string, playerName: string) {
+  constructor(roomCode: string, playerName: string, password?: string) {
     this.roomCode = roomCode.toUpperCase();
     const sessionId = getOrCreateSessionId(this.roomCode);
     this.peerId = `peer_${sessionId.slice(0, 8)}_${Math.random().toString(36).slice(2, 6)}`;
 
-    this.connectSignaling(sessionId, playerName);
+    this.connectSignaling(sessionId, playerName, password);
   }
 
-  private connectSignaling(sessionId: string, playerName: string): void {
-    const url = buildWsUrl(
-      { role: 'peer', peerId: this.peerId, sessionId, name: playerName },
-      this.roomCode
-    );
+  private connectSignaling(sessionId: string, playerName: string, password?: string): void {
+    const params: Record<string, string> = {
+      role: 'peer',
+      peerId: this.peerId,
+      sessionId,
+      name: playerName,
+    };
+    if (password && password.trim()) {
+      params.password = password.trim();
+    }
+    const url = buildWsUrl(params, this.roomCode);
     const ws = new WebSocket(url);
     this.ws = ws;
 
@@ -782,11 +816,13 @@ export class PeerMultiplayerSession implements GameSession {
       }
       if (this.snapshot.status !== 'error') {
         const msg =
-          ev.code === 4004
-            ? 'Room not found or host is offline.'
-            : ev.code === 4003
-              ? 'You were removed by the host.'
-              : 'Disconnected from the room.';
+          ev.code === 4001
+            ? 'Incorrect room password.'
+            : ev.code === 4004
+              ? 'Room not found or host is offline.'
+              : ev.code === 4003
+                ? 'You were removed by the host.'
+                : 'Disconnected from the room.';
         this.snapshot = {
           ...this.snapshot,
           status: 'disconnected',
@@ -1003,11 +1039,26 @@ export class PeerMultiplayerSession implements GameSession {
   }
 }
 
-export async function createRoomCode(): Promise<string> {
-  const res = await fetch('/api/room/create', { method: 'POST' });
+export async function createRoomCode(hostName: string, password?: string): Promise<string> {
+  const res = await fetch('/api/room/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hostName, password: password?.trim() || '' }),
+  });
   if (!res.ok) {
     throw new Error('Failed to create room.');
   }
   const data = (await res.json()) as { roomCode: string };
   return data.roomCode;
+}
+
+export async function fetchOpenRooms(): Promise<LobbyListing[]> {
+  try {
+    const res = await fetch('/api/rooms');
+    if (!res.ok) return [];
+    const data = (await res.json()) as { rooms?: LobbyListing[] };
+    return Array.isArray(data.rooms) ? data.rooms : [];
+  } catch {
+    return [];
+  }
 }

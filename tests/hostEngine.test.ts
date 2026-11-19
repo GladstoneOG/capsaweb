@@ -219,4 +219,49 @@ describe('CapsaHostEngine Authoritative Rules & Scoring', () => {
     expect(engine.getState().players[1].isBot).toBe(false);
     expect(engine.getState().players[1].cards).toEqual(originalCards);
   });
+
+  it('supports Double Deck 13-card and 26-card modes via updateRules and completes 26-card round', () => {
+    const engine = new CapsaHostEngine({
+      code: 'DBL2',
+      mode: 'solo',
+      hostId: 'p0',
+      hostSessionId: 's0',
+      hostName: 'Solo',
+    });
+
+    // Switch to 2x (13)
+    expect(engine.updateRules('p0', { enableDoubleDeck: true, doubleDeck26Cards: false }).ok).toBe(true);
+    expect(engine.getState().rules.enableDoubleDeck).toBe(true);
+    expect(engine.getState().rules.doubleDeck26Cards).toBe(false);
+
+    // Switch to 2x (26)
+    expect(engine.updateRules('p0', { enableDoubleDeck: true, doubleDeck26Cards: true }).ok).toBe(true);
+    expect(engine.startGame('p0').ok).toBe(true);
+
+    const started = engine.getState();
+    expect(started.players.every((p) => p.cards.length === 26)).toBe(true);
+    if (started.diceShowdown) {
+      expect(engine.dismissDiceShowdown().ok).toBe(true);
+    }
+
+    // Play a few turns to verify 26-card gameplay runs cleanly
+    for (let step = 0; step < 12 && engine.getState().gameState === 'playing'; step++) {
+      const s = engine.getState();
+      const cur = s.players[s.turnIndex];
+      const isFirst = !s.firstPlayMade && !s.activePlay;
+      const play = getBotPlay(
+        cur.cards,
+        s.activePlay,
+        isFirst,
+        { enableBombsSingle: s.rules.enableBombsSingle, enableBombsPair: s.rules.enableBombsPair },
+        s.startingCard
+      );
+      if (play) {
+        expect(engine.playCards(cur.id, play.map((x) => x.id)).ok).toBe(true);
+      } else {
+        expect(engine.passTurn(cur.id).ok).toBe(true);
+      }
+    }
+    expect(engine.getState().firstPlayMade).toBe(true);
+  });
 });

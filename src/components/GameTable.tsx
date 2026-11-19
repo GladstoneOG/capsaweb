@@ -9,6 +9,8 @@ import {
   MessageCircle,
   RotateCcw,
   Rows2,
+  Sparkles,
+  Trophy,
   Volume2,
   VolumeX,
   Wifi,
@@ -27,6 +29,7 @@ import type {
 import type { LocalTransportState } from '@net/protocol';
 import { sfx } from '../utils/sfx';
 import { Avatar, type TimerInfo } from './Avatar';
+import { Confetti } from './Confetti';
 import {
   ActivityDrawer,
   DiceDuelModal,
@@ -46,14 +49,15 @@ const TOSS_FROM: Record<SeatPos, { fx: string; fy: string }> = {
 };
 
 const SPLASH: Partial<Record<ComboType, string>> = {
-  straight: 'Straight',
-  flush: 'Flush',
-  fullhouse: 'Full House',
-  bomber: 'Bomber!',
-  straightflush: 'Straight Flush!',
+  straight: 'Straight!',
+  flush: 'Flush!',
+  fullhouse: 'Full House!',
+  bomber: 'BOMBER!',
+  straightflush: 'STRAIGHT FLUSH!',
 };
 
-/** Deterministic "tossed" tilt per card so the pile looks organic yet stable across renders. */
+const ORDINALS = ['', '1st', '2nd', '3rd', '4th'];
+
 function tiltFor(id: string): { rot: number; dy: number } {
   let h = 2166136261;
   for (let i = 0; i < id.length; i++) {
@@ -83,20 +87,30 @@ function Seat({
   pos,
   isTurn,
   timer,
+  justFinished,
 }: {
   player: SanitizedPlayer;
   pos: SeatPos;
   isTurn: boolean;
   timer: TimerInfo | null;
+  justFinished: boolean;
 }) {
-  const fanCount = Math.min(player.cardCount, 6);
-  const bubble = player.disconnected ? 'Offline' : player.passed && !player.finishRank ? 'Pass' : null;
+  const fanCount = Math.min(player.cardCount, 7);
+  const bubble = player.disconnected
+    ? 'Offline'
+    : player.finishRank
+      ? `${ORDINALS[player.finishRank]} · Out!`
+      : player.passed
+        ? 'Pass'
+        : null;
 
   return (
     <div
       className={`seat seat--${pos}${isTurn ? ' is-turn' : ''}${
         player.passed && !player.finishRank ? ' is-passed' : ''
-      }${player.finishRank ? ' is-done' : ''}`}
+      }${player.finishRank ? ` is-done is-rank-${player.finishRank}` : ''}${
+        justFinished ? ' is-celebrating' : ''
+      }`}
     >
       <div className="seat-avatar">
         <Avatar
@@ -107,13 +121,19 @@ function Seat({
           dimmed={player.disconnected}
           timer={isTurn ? timer : null}
         />
+        {justFinished && <span className="finish-halo" aria-hidden="true" />}
         {player.finishRank ? (
           <span className={`medal medal--${player.finishRank}`}>{player.finishRank}</span>
         ) : (
-          <span className={`seat-count${player.cardCount <= 2 ? ' is-low' : ''}`}>{player.cardCount}</span>
+          <span className={`seat-count${player.cardCount <= 2 ? ' is-low' : ''}`}>
+            {player.cardCount}
+          </span>
         )}
         {bubble && (
-          <span key={bubble} className="bubble">
+          <span
+            key={bubble}
+            className={`bubble${player.finishRank ? ` bubble--rank-${player.finishRank}` : ''}`}
+          >
             {bubble}
           </span>
         )}
@@ -121,7 +141,7 @@ function Seat({
 
       <div className="seat-info">
         <div className="seat-name">
-          {player.isHost && <Crown size={11} className="seat-crown" />}
+          {player.isHost && <Crown size={12} className="seat-crown" />}
           <span>{player.name}</span>
         </div>
         <div className="seat-score">{player.score} pts</div>
@@ -130,7 +150,11 @@ function Seat({
       {!player.finishRank && fanCount > 0 && (
         <div className="seat-fan" aria-hidden="true">
           {Array.from({ length: fanCount }).map((_, i) => (
-            <span key={i} className="seat-fan-slot" style={{ '--off': i - (fanCount - 1) / 2 } as CSSProperties}>
+            <span
+              key={i}
+              className="seat-fan-slot"
+              style={{ '--off': i - (fanCount - 1) / 2 } as CSSProperties}
+            >
               <CardBack className="card-back--xs" />
             </span>
           ))}
@@ -138,6 +162,20 @@ function Seat({
       )}
     </div>
   );
+}
+
+interface FinishBanner {
+  id: string;
+  playerId: string;
+  name: string;
+  rank: number;
+  points: number;
+}
+
+interface TrickBanner {
+  id: number;
+  winnerName: string;
+  hibah: boolean;
 }
 
 interface GameTableProps {
@@ -158,6 +196,13 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const [seenActivityCount, setSeenActivityCount] = useState(room.activity.length);
   const [tradePickerOpen, setTradePickerOpen] = useState(false);
 
+  // Celebratory & impact effects state
+  const [finishBanner, setFinishBanner] = useState<FinishBanner | null>(null);
+  const [celebratingId, setCelebratingId] = useState<string | null>(null);
+  const [midRoundConfettiKey, setMidRoundConfettiKey] = useState<number>(0);
+  const [trickBanner, setTrickBanner] = useState<TrickBanner | null>(null);
+  const [bombShakeKey, setBombShakeKey] = useState<number>(0);
+
   const myIndex = room.players.findIndex((p) => p.id === room.viewerId);
   const me = myIndex >= 0 ? room.players[myIndex] : room.players[0];
   const isHost = Boolean(me?.isHost);
@@ -169,7 +214,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const rawHand = useMemo(() => me?.cards ?? [], [me?.cards]);
   const sortedHand = useMemo(() => sortCards(rawHand, sortMethod), [rawHand, sortMethod]);
 
-  // ---------- Turn timer (computed once per turn; rings animate via CSS) ----------
+  // ---------- Turn timer ----------
   const timerData = useMemo(() => {
     if (!room.turnDeadline || room.rules.turnDuration <= 0 || room.gameState !== 'playing' || diceActive) {
       return null;
@@ -194,7 +239,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     setHintIdx(0);
   }, [rawHand, room.activePlay, room.turnIndex]);
 
-  // ---------- Played pile: current + previous (faded underneath) ----------
+  // ---------- Played pile + Bomb slam effect ----------
   const playKey = room.activePlay
     ? `${room.lastPlayerPlayedId}:${room.activePlay.cards.map((c) => c.id).join(',')}`
     : null;
@@ -208,9 +253,76 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     lastPlayRef.current = { key: playKey, cards: room.activePlay ? room.activePlay.cards : null };
     if (playKey) {
       const t = room.activePlay?.type;
-      sfx.cardPlay(t === 'bomber' || t === 'straightflush');
+      const bombed = t === 'bomber' || t === 'straightflush';
+      sfx.cardPlay(bombed);
+      if (bombed) {
+        setBombShakeKey((k) => k + 1);
+      }
     }
   }, [playKey, room.activePlay]);
+
+  // ---------- Detect player running out of cards (1st / 2nd / 3rd) ----------
+  const knownFinishedRef = useRef<Set<string>>(new Set());
+  const lastRoundRef = useRef<number>(room.roundNumber);
+
+  useEffect(() => {
+    if (room.roundNumber !== lastRoundRef.current) {
+      lastRoundRef.current = room.roundNumber;
+      knownFinishedRef.current = new Set();
+      setFinishBanner(null);
+      setCelebratingId(null);
+      setTrickBanner(null);
+    }
+
+    const newlyFinished = room.players.filter(
+      (p) => p.finishRank !== undefined && p.finishRank < room.players.length && !knownFinishedRef.current.has(p.id)
+    );
+    if (newlyFinished.length === 0) return;
+
+    for (const p of newlyFinished) {
+      knownFinishedRef.current.add(p.id);
+    }
+
+    // Highlight the highest finisher in this update
+    newlyFinished.sort((a, b) => (a.finishRank ?? 9) - (b.finishRank ?? 9));
+    const topFinisher = newlyFinished[0];
+    const rank = topFinisher.finishRank!;
+    const pts = Math.max(0, room.players.length - rank);
+
+    sfx.playerFinished(rank);
+    setCelebratingId(topFinisher.id);
+    setFinishBanner({
+      id: `${room.roundNumber}_${topFinisher.id}_${rank}`,
+      playerId: topFinisher.id,
+      name: topFinisher.id === room.viewerId ? 'You' : topFinisher.name,
+      rank,
+      points: pts,
+    });
+    if (rank === 1 && room.gameState === 'playing') {
+      setMidRoundConfettiKey((k) => k + 1);
+    }
+
+    const timer = window.setTimeout(() => {
+      setCelebratingId((cur) => (cur === topFinisher.id ? null : cur));
+    }, 2600);
+    return () => window.clearTimeout(timer);
+  }, [room.players, room.roundNumber, room.viewerId, room.gameState]);
+
+  // ---------- Detect Trick Win / Hibah ----------
+  const lastTrickTsRef = useRef<number | null>(room.lastTrick?.timestamp ?? null);
+  useEffect(() => {
+    const ts = room.lastTrick?.timestamp ?? null;
+    if (ts && ts !== lastTrickTsRef.current) {
+      lastTrickTsRef.current = ts;
+      sfx.trickWon();
+      setTrickBanner({
+        id: ts,
+        winnerName:
+          room.lastTrick!.winnerId === room.viewerId ? 'You' : room.lastTrick!.winnerName,
+        hibah: room.lastTrick!.hibah,
+      });
+    }
+  }, [room.lastTrick, room.viewerId]);
 
   // ---------- Sound cues ----------
   const prevTurnRef = useRef(false);
@@ -331,7 +443,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     handleHint,
   ]);
 
-  // ---------- Seats (clockwise: me → left → top → right) ----------
+  // ---------- Seats ----------
   const seats = useMemo(() => {
     const n = room.players.length;
     const base = myIndex >= 0 ? myIndex : 0;
@@ -363,22 +475,16 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const isTradeTarget = Boolean(pendingTrade && pendingTrade.targetPlayerId === room.viewerId);
   const isTradeRequester = Boolean(pendingTrade && pendingTrade.requesterId === room.viewerId);
 
-  const latestNote = useMemo(() => {
-    for (let i = room.activity.length - 1; i >= 0; i--) {
-      const a = room.activity[i];
-      if (!a.system) continue;
-      if (/ played | passed\.$/.test(a.text)) continue; // already visualised on the table
-      return a;
-    }
-    return null;
-  }, [room.activity]);
-
   const unreadCount = Math.max(0, room.activity.length - seenActivityCount);
   const noPlays = isMyTurn && !isFirstPlayOfRound && room.activePlay && eligiblePlays.length === 0;
   const leaderName = currentPlayer?.id === room.viewerId ? 'You' : currentPlayer?.name;
 
   return (
     <div className="table-shell">
+      {midRoundConfettiKey > 0 && room.gameState === 'playing' && (
+        <Confetti key={midRoundConfettiKey} count={75} duration={2100} />
+      )}
+
       {/* ================= HUD ================= */}
       <header className="hud">
         <div className="hud-chips">
@@ -390,7 +496,9 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
             First to <strong>{room.rules.pointsToWin}</strong>
           </span>
           {room.rules.enableDoubleDeck && (
-            <span className="chip hide-sm">2× deck{room.rules.doubleDeck26Cards ? ' · 26' : ''}</span>
+            <span className="chip chip--gold">
+              2× Deck · {room.rules.doubleDeck26Cards ? '26' : '13'}
+            </span>
           )}
           {room.rules.enableTrading && <span className="chip hide-sm">Trading</span>}
           {room.mode === 'multiplayer' && (
@@ -420,129 +528,165 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
         </div>
       </header>
 
-      {/* ================= STAGE ================= */}
+      {/* ================= STAGE (SEATS HUGGING THE TABLE) ================= */}
       <main className="stage">
-        <div className="table-rim">
-          <div className="table-felt" aria-live="polite">
-            <div className="felt-mark" aria-hidden="true">
-              <span>CAPSA</span>
-            </div>
+        <div className="table-cluster">
+          {seats.map(({ player, pos }) => (
+            <Seat
+              key={player.id}
+              player={player}
+              pos={pos}
+              isTurn={currentPlayer?.id === player.id && room.gameState === 'playing' && !diceActive}
+              timer={timerData?.info ?? null}
+              justFinished={celebratingId === player.id}
+            />
+          ))}
 
-            {underPlay && room.activePlay && (
-              <div className="trick trick--under" aria-hidden="true">
-                {underPlay.map((card) => {
-                  const t = tiltFor(card.id);
-                  return (
-                    <div
-                      key={card.id}
-                      className="trick-card"
-                      style={{ '--rot': `${t.rot}deg`, '--dy': `${t.dy}px` } as CSSProperties}
-                    >
-                      <PlayingCard card={card} size="lg" />
-                    </div>
-                  );
-                })}
+          <div
+            key={`rim_${bombShakeKey}`}
+            className={`table-rim${bombShakeKey > 0 ? ' is-shaking' : ''}`}
+          >
+            <div className="table-felt" aria-live="polite">
+              <div className="felt-mark" aria-hidden="true">
+                <span>CAPSA</span>
               </div>
-            )}
 
-            {room.activePlay ? (
-              <>
-                <div key={playKey} className={`trick${isBomb ? ' is-bomb' : ''}`}>
-                  {room.activePlay.cards.map((card, i) => {
+              {isBomb && playKey && <span key={`wave_${playKey}`} className="shockwave" aria-hidden="true" />}
+
+              {underPlay && room.activePlay && (
+                <div className="trick trick--under" aria-hidden="true">
+                  {underPlay.map((card) => {
                     const t = tiltFor(card.id);
                     return (
                       <div
                         key={card.id}
-                        className="trick-card is-fresh"
-                        style={
-                          {
-                            '--rot': `${t.rot}deg`,
-                            '--dy': `${t.dy}px`,
-                            '--fx': toss.fx,
-                            '--fy': toss.fy,
-                            '--i': i,
-                          } as CSSProperties
-                        }
+                        className="trick-card"
+                        style={{ '--rot': `${t.rot}deg`, '--dy': `${t.dy}px` } as CSSProperties}
                       >
                         <PlayingCard card={card} size="lg" />
                       </div>
                     );
                   })}
                 </div>
-                <div className={`combo-tag${isBomb ? ' is-bomb' : ''}`}>
-                  {isBomb && <Flame size={13} />}
-                  <strong>{COMBO_LABELS[room.activePlay.type]}</strong>
-                  {lastPlayedPlayer && (
-                    <span>· {lastPlayedPlayer.id === room.viewerId ? 'you' : lastPlayedPlayer.name}</span>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="lead-hint">
-                <div className="lead-hint-title">
-                  {isFirstPlayOfRound ? 'Opening lead' : 'Fresh trick'}
-                </div>
-                <div className="lead-hint-sub">
-                  {isFirstPlayOfRound ? (
-                    <>
-                      <strong>{leaderName}</strong> {leaderName === 'You' ? 'start' : 'starts'} with{' '}
-                      <strong className="gold">
-                        {room.startingCard ? cardToString(room.startingCard) : '3♦'}
-                      </strong>
-                    </>
-                  ) : (
-                    <>
-                      <strong>{leaderName}</strong> {leaderName === 'You' ? 'have' : 'has'} the lead
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {splashText && playKey && (
-              <div key={`splash_${playKey}`} className={`combo-splash${isBomb ? ' is-bomb' : ''}`} aria-hidden="true">
-                {splashText}
-              </div>
-            )}
-
-            <div className="felt-notes">
-              {isTradeRequester && pendingTrade && (
-                <div className="note-chip is-static">
-                  Asking for {cardToString(pendingTrade.requestedCard)}…
-                  <button type="button" className="note-chip-btn" onClick={() => onIntent({ type: 'TRADE_CANCEL' })}>
-                    Cancel
-                  </button>
-                </div>
               )}
-              {error ? (
-                <div key={`err_${error}`} className="note-chip is-error is-static">
-                  {error}
-                </div>
-              ) : (
-                latestNote && (
-                  <div key={latestNote.id} className="note-chip">
-                    {latestNote.text}
+
+              {room.activePlay ? (
+                <>
+                  <div key={playKey} className={`trick${isBomb ? ' is-bomb' : ''}`}>
+                    {room.activePlay.cards.map((card, i) => {
+                      const t = tiltFor(card.id);
+                      return (
+                        <div
+                          key={card.id}
+                          className="trick-card is-fresh"
+                          style={
+                            {
+                              '--rot': `${t.rot}deg`,
+                              '--dy': `${t.dy}px`,
+                              '--fx': toss.fx,
+                              '--fy': toss.fy,
+                              '--i': i,
+                            } as CSSProperties
+                          }
+                        >
+                          <PlayingCard card={card} size="lg" />
+                        </div>
+                      );
+                    })}
                   </div>
-                )
+                  <div className={`combo-tag${isBomb ? ' is-bomb' : ''}`}>
+                    {isBomb && <Flame size={14} />}
+                    <strong>{COMBO_LABELS[room.activePlay.type]}</strong>
+                    {lastPlayedPlayer && (
+                      <span>· {lastPlayedPlayer.id === room.viewerId ? 'you' : lastPlayedPlayer.name}</span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="lead-hint">
+                  <div className="lead-hint-title">
+                    {isFirstPlayOfRound ? 'Opening lead' : 'Fresh trick'}
+                  </div>
+                  <div className="lead-hint-sub">
+                    {isFirstPlayOfRound ? (
+                      <>
+                        <strong>{leaderName}</strong> {leaderName === 'You' ? 'start' : 'starts'} with{' '}
+                        <strong className="gold">
+                          {room.startingCard ? cardToString(room.startingCard) : '3♦'}
+                        </strong>
+                      </>
+                    ) : (
+                      <>
+                        <strong>{leaderName}</strong> {leaderName === 'You' ? 'have' : 'has'} the lead
+                      </>
+                    )}
+                  </div>
+                </div>
               )}
+
+              {splashText && playKey && (
+                <div
+                  key={`splash_${playKey}`}
+                  className={`combo-splash${isBomb ? ' is-bomb' : ''}`}
+                  aria-hidden="true"
+                >
+                  {splashText}
+                </div>
+              )}
+
+              {/* Celebratory Player-Out Finish Banner */}
+              {finishBanner && room.gameState === 'playing' && (
+                <div
+                  key={finishBanner.id}
+                  className={`finish-banner finish-banner--${finishBanner.rank}`}
+                >
+                  <Trophy size={16} />
+                  <span>
+                    <strong>{finishBanner.name}</strong> went out <strong>{ORDINALS[finishBanner.rank]}</strong>!
+                  </span>
+                  <span className="finish-pts">+{finishBanner.points} pts</span>
+                </div>
+              )}
+
+              <div className="felt-notes">
+                {isTradeRequester && pendingTrade && (
+                  <div className="note-chip is-static">
+                    Asking for {cardToString(pendingTrade.requestedCard)}…
+                    <button
+                      type="button"
+                      className="note-chip-btn"
+                      onClick={() => onIntent({ type: 'TRADE_CANCEL' })}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+                {error ? (
+                  <div key={`err_${error}`} className="note-chip is-error is-static">
+                    {error}
+                  </div>
+                ) : (
+                  trickBanner &&
+                  !room.activePlay && (
+                    <div key={trickBanner.id} className="note-chip is-trick">
+                      <Sparkles size={13} />
+                      <span>
+                        {trickBanner.hibah
+                          ? `Hibah! Lead passes to ${trickBanner.winnerName}`
+                          : `${trickBanner.winnerName} ${trickBanner.winnerName === 'You' ? 'take' : 'takes'} the lead`}
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
             </div>
           </div>
         </div>
-
-        {seats.map(({ player, pos }) => (
-          <Seat
-            key={player.id}
-            player={player}
-            pos={pos}
-            isTurn={currentPlayer?.id === player.id && room.gameState === 'playing' && !diceActive}
-            timer={timerData?.info ?? null}
-          />
-        ))}
       </main>
 
       {/* ================= DOCK ================= */}
       <footer className="dock">
-        <div className="hand" key={`round_${room.roundNumber}`}>
+        <div className={`hand${useTwoRows ? ' is-two-rows' : ''}`} key={`round_${room.roundNumber}`}>
           {(selectionEval.label || noPlays) && (
             <div
               className={`sel-chip ${
@@ -560,7 +704,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
 
           {handRows.map((row, rowIdx) => {
             const n = row.length;
-            const spread = Math.min(3, 34 / Math.max(n, 1));
+            const spread = Math.min(2.8, 30 / Math.max(n, 1));
             return (
               <div
                 key={rowIdx}
@@ -571,7 +715,11 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
                   const isStartCard =
                     isFirstPlayOfRound &&
                     isMyTurn &&
-                    Boolean(room.startingCard && card.rank === room.startingCard.rank && card.suit === room.startingCard.suit);
+                    Boolean(
+                      room.startingCard &&
+                        card.rank === room.startingCard.rank &&
+                        card.suit === room.startingCard.suit
+                    );
                   return (
                     <div
                       key={card.id}
@@ -593,7 +741,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
           })}
         </div>
 
-        <div className={`dock-bar${isMyTurn ? ' is-turn' : ''}`}>
+        <div className={`dock-bar${isMyTurn ? ' is-turn' : ''}${me?.finishRank ? ' is-me-done' : ''}`}>
           <div className="me">
             <Avatar
               name={me?.name ?? 'You'}
@@ -605,7 +753,11 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               <div className="me-name">
                 <span className="me-name-text">{me?.name}</span>
                 {isMyTurn && <span className="turn-pill">Your turn</span>}
-                {me?.finishRank && <span className={`medal medal--${me.finishRank} medal--inline`}>{me.finishRank}</span>}
+                {me?.finishRank && (
+                  <span className={`medal medal--${me.finishRank} medal--inline`}>
+                    {ORDINALS[me.finishRank]}
+                  </span>
+                )}
                 {me?.passed && !me.finishRank && <span className="soft-pill">Passed</span>}
               </div>
               <div className="me-sub">

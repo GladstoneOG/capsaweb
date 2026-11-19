@@ -89,6 +89,22 @@ class SoundFX {
     this.tone(783.99, 0.18, 'triangle', 0.08, 0.18);
     this.tone(1046.5, 0.28, 'sine', 0.08, 0.28);
   }
+
+  playerFinished(rank: number): void {
+    if (rank === 1) {
+      this.tone(587.33, 0.11, 'triangle', 0.08, 0);
+      this.tone(783.99, 0.12, 'triangle', 0.08, 0.07);
+      this.tone(1174.66, 0.24, 'sine', 0.09, 0.15);
+      return;
+    }
+    this.tone(440, 0.1, 'triangle', 0.065, 0);
+    this.tone(659.25, 0.16, 'sine', 0.07, 0.08);
+  }
+
+  trickWon(): void {
+    this.tone(392, 0.08, 'sine', 0.045, 0);
+    this.tone(523.25, 0.11, 'sine', 0.05, 0.05);
+  }
 }
 
 export const sfx = new SoundFX();

@@ -79,12 +79,12 @@ export function App() {
     }
   }, []);
 
-  const handleHost = async (name: string) => {
+  const handleHost = async (name: string, password?: string) => {
     persistName(name);
     setBusy(true);
     setHomeError(null);
     try {
-      const code = await createRoomCode();
+      const code = await createRoomCode(name, password);
       const hostSession = new HostMultiplayerSession(code, name);
       setSession(hostSession);
       try {
@@ -99,11 +99,11 @@ export function App() {
     }
   };
 
-  const handleJoin = (code: string, name: string) => {
+  const handleJoin = (code: string, name: string, password?: string) => {
     persistName(name);
     setHomeError(null);
     const cleanCode = code.toUpperCase();
-    const peerSession = new PeerMultiplayerSession(cleanCode, name);
+    const peerSession = new PeerMultiplayerSession(cleanCode, name, password);
     setSession(peerSession);
     try {
       window.history.replaceState({}, '', `/?room=${cleanCode}`);

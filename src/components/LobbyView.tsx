@@ -18,7 +18,24 @@ const TURN_TIMERS = [
   { label: '60s', value: 60 },
 ];
 
-function Toggle({ on, disabled, onClick, label }: { on: boolean; disabled: boolean; onClick: () => void; label: string }) {
+type DeckMode = 'standard' | 'double13' | 'double26';
+
+function getDeckMode(rules: CapsaRules): DeckMode {
+  if (!rules.enableDoubleDeck) return 'standard';
+  return rules.doubleDeck26Cards ? 'double26' : 'double13';
+}
+
+function Toggle({
+  on,
+  disabled,
+  onClick,
+  label,
+}: {
+  on: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  label: string;
+}) {
   return (
     <button
       type="button"
@@ -40,6 +57,7 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
   const emptySlots = Math.max(0, 4 - room.players.length);
   const isSolo = room.mode === 'solo';
   const inviteLink = typeof window !== 'undefined' ? `${window.location.origin}/?room=${room.code}` : '';
+  const deckMode = getDeckMode(room.rules);
 
   const share = async () => {
     try {
@@ -51,13 +69,30 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
-      // user dismissed share sheet
+      // ignore
     }
   };
 
   const updateRule = (patch: Partial<CapsaRules>) => {
     if (isHost) onIntent({ type: 'UPDATE_RULES', rules: patch });
   };
+
+  const setDeckMode = (mode: DeckMode) => {
+    if (mode === 'standard') {
+      updateRule({ enableDoubleDeck: false, doubleDeck26Cards: false });
+    } else if (mode === 'double13') {
+      updateRule({ enableDoubleDeck: true, doubleDeck26Cards: false });
+    } else {
+      updateRule({ enableDoubleDeck: true, doubleDeck26Cards: true });
+    }
+  };
+
+  const deckDesc =
+    deckMode === 'standard'
+      ? '52 cards · 13 each · 3♦ leads'
+      : deckMode === 'double13'
+        ? '104-card shoe · 13 each · duplicates & lowest card leads'
+        : 'All 104 cards dealt · 26 each · twin 3♦ dice duel';
 
   return (
     <div className="screen">
@@ -192,6 +227,39 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
 
             <div className="rule">
               <div className="rule-text">
+                <b>Deck</b>
+                <small>{deckDesc}</small>
+              </div>
+              <div className="seg">
+                <button
+                  type="button"
+                  disabled={!isHost}
+                  className={deckMode === 'standard' ? 'is-on' : ''}
+                  onClick={() => setDeckMode('standard')}
+                >
+                  Standard
+                </button>
+                <button
+                  type="button"
+                  disabled={!isHost}
+                  className={deckMode === 'double13' ? 'is-on' : ''}
+                  onClick={() => setDeckMode('double13')}
+                >
+                  2× (13)
+                </button>
+                <button
+                  type="button"
+                  disabled={!isHost}
+                  className={deckMode === 'double26' ? 'is-on' : ''}
+                  onClick={() => setDeckMode('double26')}
+                >
+                  2× (26)
+                </button>
+              </div>
+            </div>
+
+            <div className="rule">
+              <div className="rule-text">
                 <b>Play to</b>
                 <small>points to win the match</small>
               </div>
@@ -255,34 +323,6 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
                 onClick={() => updateRule({ enableBombsPair: !room.rules.enableBombsPair })}
               />
             </div>
-
-            <div className="rule">
-              <div className="rule-text">
-                <b>Double deck</b>
-                <small>104 cards · lowest unique card leads</small>
-              </div>
-              <Toggle
-                label="Double deck"
-                on={room.rules.enableDoubleDeck}
-                disabled={!isHost}
-                onClick={() => updateRule({ enableDoubleDeck: !room.rules.enableDoubleDeck })}
-              />
-            </div>
-
-            {room.rules.enableDoubleDeck && (
-              <div className="rule rule--nested">
-                <div className="rule-text">
-                  <b>26-card hands</b>
-                  <small>deal everything · dice duel on twin 3♦</small>
-                </div>
-                <Toggle
-                  label="26-card hands"
-                  on={room.rules.doubleDeck26Cards}
-                  disabled={!isHost}
-                  onClick={() => updateRule({ doubleDeck26Cards: !room.rules.doubleDeck26Cards })}
-                />
-              </div>
-            )}
 
             <div className="rule">
               <div className="rule-text">

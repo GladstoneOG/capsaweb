@@ -1,4 +1,5 @@
 import type { Card, Suit } from '@engine/types';
+import { CourtArt } from './CourtArt';
 
 export function SuitGlyph({ suit, className }: { suit: Suit; className?: string }) {
   switch (suit) {
@@ -57,6 +58,7 @@ export function PlayingCard({
     'pcard',
     `pcard--${size}`,
     isRed ? 'is-red' : 'is-black',
+    isFace ? 'is-court' : '',
     interactive ? 'is-interactive' : '',
     selected ? 'is-selected' : '',
     highlightStarting ? 'is-start' : '',
@@ -72,9 +74,8 @@ export function PlayingCard({
       </span>
       <span className="pcard-center">
         {isFace ? (
-          <span className="pcard-face">
-            <span className="pcard-face-letter">{card.rank}</span>
-            <SuitGlyph suit={card.suit} className="pcard-face-suit" />
+          <span className="pcard-court">
+            <CourtArt rank={card.rank as 'J' | 'Q' | 'K'} suit={card.suit} />
           </span>
         ) : (
           <SuitGlyph

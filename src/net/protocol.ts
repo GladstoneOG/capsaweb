@@ -1,5 +1,16 @@
 import type { ClientIntent, SanitizedRoomState } from '@engine/types';
 
+export interface LobbyListing {
+  code: string;
+  hostName: string;
+  hasPassword: boolean;
+  playerCount: number;
+  maxPlayers: number;
+  gameState: string;
+  rulesSummary: string;
+  updatedAt: number;
+}
+
 // Messages exchanged between Host and Peer (over WebRTC DataChannel OR WS Relay fallback)
 export type HostToPeerMessage =
   | { type: 'STATE_SYNC'; state: SanitizedRoomState }
@@ -25,11 +36,7 @@ export type SignalServerMessage =
   | { type: 'relay-from-peer'; from: string; payload: PeerToHostMessage }
   | { type: 'relay-from-host'; payload: HostToPeerMessage };
 
-export type ConnectionStatus =
-  | 'connecting'
-  | 'connected'
-  | 'disconnected'
-  | 'error';
+export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 export type LocalTransportState = 'local' | 'host' | 'p2p' | 'relay' | 'connecting';
 
