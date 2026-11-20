@@ -28,6 +28,7 @@ import type {
   SanitizedRoomState,
 } from '@engine/types';
 import type { LocalTransportState } from '@net/protocol';
+import { useHandDrag } from '../hooks/useHandDrag';
 import { sfx } from '../utils/sfx';
 import { Avatar, type TimerInfo } from './Avatar';
 import { Confetti } from './Confetti';
@@ -192,6 +193,7 @@ interface GameTableProps {
 export function GameTable({ room, transport, error, onIntent, onLeave }: GameTableProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sortMethod, setSortMethod] = useState<'rank' | 'suit'>('rank');
+  const [customOrder, setCustomOrder] = useState<string[] | null>(null);
   const [twoRowPref, setTwoRowPref] = useState(true);
   const [hintIdx, setHintIdx] = useState(0);
   const [muted, setMuted] = useState(() => sfx.isMuted());
@@ -218,7 +220,30 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const isFirstPlayOfRound = !room.firstPlayMade && !room.activePlay;
 
   const rawHand = useMemo(() => me?.cards ?? [], [me?.cards]);
-  const sortedHand = useMemo(() => sortCards(rawHand, sortMethod), [rawHand, sortMethod]);
+  const sortedHand = useMemo(() => {
+    const autoSorted = sortCards(rawHand, sortMethod);
+    if (!customOrder) return autoSorted;
+    const byId = new Map(rawHand.map((c) => [c.id, c]));
+    const ordered: Card[] = [];
+    const seen = new Set<string>();
+    for (const id of customOrder) {
+      const card = byId.get(id);
+      if (card) {
+        ordered.push(card);
+        seen.add(id);
+      }
+    }
+    // Append any newly received cards (e.g. from Card Trading) in sorted order
+    for (const card of autoSorted) {
+      if (!seen.has(card.id)) ordered.push(card);
+    }
+    return ordered;
+  }, [rawHand, sortMethod, customOrder]);
+
+  // Reset manual hand order on new round
+  useEffect(() => {
+    setCustomOrder(null);
+  }, [room.roundNumber]);
 
   // ---------- Turn timer ----------
   const timerData = useMemo(() => {
@@ -383,6 +408,32 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     setSelectedIds((prev) => (prev.includes(card.id) ? prev.filter((id) => id !== card.id) : [...prev, card.id]));
   }, []);
 
+  const {
+    draggingCard,
+    draggingId,
+    ghostRef,
+    ghostDims,
+    registerSlot,
+    registerFlip,
+    handleCardPointerDown,
+    snapshotRects,
+  } = useHandDrag({
+    hand: sortedHand,
+    onReorder: (nextIds) => setCustomOrder(nextIds),
+    onTap: toggleCard,
+    resetKey: room.roundNumber,
+  });
+
+  const handleSortToggle = useCallback(() => {
+    snapshotRects();
+    if (customOrder) {
+      // Snap back to current sort method first
+      setCustomOrder(null);
+    } else {
+      setSortMethod((prev) => (prev === 'rank' ? 'suit' : 'rank'));
+    }
+  }, [customOrder, snapshotRects]);
+
   const canPass = canAct && Boolean(room.activePlay) && !isFirstPlayOfRound;
 
   const handlePlay = useCallback(() => {
@@ -443,7 +494,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
         handleHint();
       } else if (k === 's') {
         e.preventDefault();
-        setSortMethod((prev) => (prev === 'rank' ? 'suit' : 'rank'));
+        handleSortToggle();
       } else if (e.key === 'Escape') {
         setSelectedIds([]);
       }
@@ -463,6 +514,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     handlePass,
     handleUndoPass,
     handleHint,
+    handleSortToggle,
   ]);
 
   // ---------- Seats ----------
@@ -749,7 +801,10 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
           )}
         </div>
 
-        <div className={`hand${useTwoRows ? ' is-two-rows' : ''}`} key={`round_${room.roundNumber}`}>
+        <div
+          className={`hand${useTwoRows ? ' is-two-rows' : ''}${draggingId ? ' is-dragging' : ''}`}
+          key={`round_${room.roundNumber}`}
+        >
           {handRows.map((row, rowIdx) => {
             const n = row.length;
             const spread = Math.min(2.8, 30 / Math.max(n, 1));
@@ -768,19 +823,29 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
                         card.rank === room.startingCard.rank &&
                         card.suit === room.startingCard.suit
                     );
+                  const isBeingDragged = draggingId === card.id;
                   return (
                     <div
                       key={card.id}
-                      className="fan-slot"
+                      ref={(el) => registerSlot(card.id, el)}
+                      className={`fan-slot${isBeingDragged ? ' is-drag-placeholder' : ''}`}
                       style={{ '--off': i - (n - 1) / 2, '--i': i + rowIdx * 13 } as CSSProperties}
                     >
-                      <PlayingCard
-                        card={card}
-                        interactive
-                        selected={selectedIds.includes(card.id)}
-                        highlightStarting={isStartCard}
-                        onClick={() => toggleCard(card)}
-                      />
+                      <div className="fan-flip" ref={(el) => registerFlip(card.id, el)}>
+                        <PlayingCard
+                          card={card}
+                          interactive
+                          selected={selectedIds.includes(card.id)}
+                          highlightStarting={isStartCard}
+                          onPointerDown={(e) => handleCardPointerDown(card, e)}
+                          onKeyDown={(e) => {
+                            if (e.key === ' ' || e.key === 'Enter') {
+                              e.preventDefault();
+                              toggleCard(card);
+                            }
+                          }}
+                        />
+                      </div>
                     </div>
                   );
                 })}
@@ -788,6 +853,21 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
             );
           })}
         </div>
+
+        {/* GPU-composited floating card while dragging */}
+        {draggingCard && (
+          <div
+            ref={ghostRef}
+            className="drag-ghost"
+            style={{ width: ghostDims.w, height: ghostDims.h }}
+            aria-hidden="true"
+          >
+            <PlayingCard
+              card={draggingCard}
+              selected={false}
+            />
+          </div>
+        )}
 
         <div className={`dock-bar${isMyTurn ? ' is-turn' : ''}${me?.finishRank ? ' is-me-done' : ''}${isAfk ? ' is-afk' : ''}`}>
           <div className="me">
@@ -838,11 +918,12 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
             <button
               type="button"
               className="tool-btn"
-              title="Sort (S)"
-              onClick={() => setSortMethod((prev) => (prev === 'rank' ? 'suit' : 'rank'))}
+              title={customOrder ? `Sort by ${sortMethod} (S)` : 'Sort (S)'}
+              onClick={handleSortToggle}
             >
               <ArrowUpDown size={15} />
               <span>{sortMethod === 'rank' ? 'Rank' : 'Suit'}</span>
+              {customOrder && <span className="sort-dot" title="Custom order" />}
             </button>
             {sortedHand.length > 13 && (
               <button type="button" className="tool-btn" title="Rows" onClick={() => setTwoRowPref((p) => !p)}>

@@ -42,6 +42,8 @@ interface PlayingCardProps {
   interactive?: boolean;
   highlightStarting?: boolean;
   onClick?: () => void;
+  onPointerDown?: (e: React.PointerEvent<HTMLButtonElement>) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
 export function PlayingCard({
@@ -51,6 +53,8 @@ export function PlayingCard({
   interactive = false,
   highlightStarting = false,
   onClick,
+  onPointerDown,
+  onKeyDown,
 }: PlayingCardProps) {
   const isRed = card.suit === 'D' || card.suit === 'H';
   const isFace = card.rank === 'J' || card.rank === 'Q' || card.rank === 'K';
@@ -95,7 +99,16 @@ export function PlayingCard({
 
   if (interactive) {
     return (
-      <button type="button" className={classes} onClick={onClick} aria-pressed={selected} aria-label={label}>
+      <button
+        type="button"
+        className={classes}
+        draggable={false}
+        onClick={onClick}
+        onPointerDown={onPointerDown}
+        onKeyDown={onKeyDown}
+        aria-pressed={selected}
+        aria-label={label}
+      >
         {inner}
       </button>
     );

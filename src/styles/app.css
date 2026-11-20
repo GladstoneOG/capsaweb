@@ -1977,6 +1977,7 @@ button.seat-tile.is-empty:hover {
   align-items: flex-end;
   justify-content: center;
   width: 100%;
+  touch-action: none;
 }
 
 .fan-slot {
@@ -1994,6 +1995,11 @@ button.seat-tile.is-empty:hover {
   animation-delay: calc(var(--i, 0) * 20ms);
 }
 
+.fan-flip {
+  display: inline-flex;
+  will-change: transform;
+}
+
 .fan-slot:first-child {
   margin-left: 0;
 }
@@ -2004,6 +2010,60 @@ button.seat-tile.is-empty:hover {
 
 .fan-slot:has(.is-selected) {
   z-index: 40;
+}
+
+.fan-slot.is-drag-placeholder {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Prevent distracting hover jumps on neighbor cards while dragging */
+.hand.is-dragging .pcard.is-interactive:hover:not(.is-selected) {
+  transform: none;
+}
+
+.hand.is-dragging .pcard.is-selected:hover {
+  transform: translateY(-24px) scale(1.03);
+}
+
+.hand.is-dragging .fan-slot:hover {
+  z-index: auto;
+}
+
+.hand.is-dragging .fan-slot {
+  animation: none;
+}
+
+.hand.is-dragging,
+.hand.is-dragging * {
+  cursor: grabbing !important;
+}
+
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 90;
+  pointer-events: none;
+  will-change: transform;
+  transform-origin: center center;
+}
+
+.drag-ghost .pcard {
+  width: 100%;
+  height: 100%;
+  border-color: var(--gold-2);
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 0 0 2px rgba(255, 225, 160, 0.65),
+    0 24px 48px rgba(0, 0, 0, 0.58);
+}
+
+.sort-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold-2);
 }
 
 @keyframes dealCard {
