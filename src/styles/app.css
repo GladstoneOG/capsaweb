@@ -1991,6 +1991,9 @@ button.seat-tile.is-empty:hover {
     translateY(calc(var(--off, 0) * var(--off, 0) * 0.6px))
     rotate(calc(var(--off, 0) * var(--spread, 2deg) * 0.48));
   transform-origin: center 140%;
+}
+
+.hand.is-dealing .fan-slot {
   animation: dealCard 0.38s var(--ease-out) backwards;
   animation-delay: calc(var(--i, 0) * 20ms);
 }
@@ -2028,10 +2031,6 @@ button.seat-tile.is-empty:hover {
 
 .hand.is-dragging .fan-slot:hover {
   z-index: auto;
-}
-
-.hand.is-dragging .fan-slot {
-  animation: none;
 }
 
 .hand.is-dragging,

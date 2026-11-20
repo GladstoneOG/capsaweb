@@ -194,6 +194,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sortMethod, setSortMethod] = useState<'rank' | 'suit'>('rank');
   const [customOrder, setCustomOrder] = useState<string[] | null>(null);
+  const [isDealing, setIsDealing] = useState(true);
   const [twoRowPref, setTwoRowPref] = useState(true);
   const [hintIdx, setHintIdx] = useState(0);
   const [muted, setMuted] = useState(() => sfx.isMuted());
@@ -240,9 +241,12 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     return ordered;
   }, [rawHand, sortMethod, customOrder]);
 
-  // Reset manual hand order on new round
+  // Reset manual hand order and play deal entrance once per round
   useEffect(() => {
     setCustomOrder(null);
+    setIsDealing(true);
+    const id = window.setTimeout(() => setIsDealing(false), 950);
+    return () => window.clearTimeout(id);
   }, [room.roundNumber]);
 
   // ---------- Turn timer ----------
@@ -423,6 +427,10 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     onTap: toggleCard,
     resetKey: room.roundNumber,
   });
+
+  useEffect(() => {
+    if (draggingId) setIsDealing(false);
+  }, [draggingId]);
 
   const handleSortToggle = useCallback(() => {
     snapshotRects();
@@ -802,7 +810,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
         </div>
 
         <div
-          className={`hand${useTwoRows ? ' is-two-rows' : ''}${draggingId ? ' is-dragging' : ''}`}
+          className={`hand${useTwoRows ? ' is-two-rows' : ''}${isDealing ? ' is-dealing' : ''}${draggingId ? ' is-dragging' : ''}`}
           key={`round_${room.roundNumber}`}
         >
           {handRows.map((row, rowIdx) => {
