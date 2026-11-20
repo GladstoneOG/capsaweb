@@ -1547,7 +1547,7 @@ button.seat-tile.is-empty:hover {
   grid-column: 2;
   grid-row: 1;
   flex-direction: row;
-  gap: 15px;
+  gap: 12px;
   padding: 6px 16px 6px 8px;
   border-radius: 999px;
   background: rgba(7, 20, 15, 0.74);
@@ -1648,26 +1648,27 @@ button.seat-tile.is-empty:hover {
 }
 
 .seat-count {
-  position: absolute;
-  bottom: -6px;
-  right: -10px;
-  min-width: 34px;
-  height: 27px;
-  padding: 0 8px;
-  gap: 3px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #fffdf7 0%, #e9e1cf 100%);
-  border: 2px solid #0b1d16;
-  color: #12211a;
-  font-size: 0.9rem;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow:
-    0 3px 10px rgba(0, 0, 0, 0.55),
-    0 0 0 1px rgba(255, 255, 255, 0.35);
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fffdf7 0%, #eae2d0 100%);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  color: #13221b;
+  font-size: clamp(0.76rem, 0.84vw, 0.88rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.seat-count strong {
+  font-size: clamp(0.86rem, 0.96vw, 1rem);
+  font-weight: 900;
 }
 
 .seat-count-ico {
@@ -1681,7 +1682,7 @@ button.seat-tile.is-empty:hover {
   color: #240907;
   box-shadow:
     0 0 16px rgba(255, 122, 107, 0.6),
-    0 3px 10px rgba(0, 0, 0, 0.55);
+    0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 .seat-count.is-low::after {
@@ -1798,10 +1799,15 @@ button.seat-tile.is-empty:hover {
 }
 
 .seat-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   text-align: center;
 }
 
 .seat--top .seat-info {
+  align-items: flex-start;
   text-align: left;
 }
 
@@ -1810,11 +1816,12 @@ button.seat-tile.is-empty:hover {
   align-items: center;
   gap: 4px;
   font-weight: 700;
-  font-size: clamp(0.84rem, 0.95vw, 1rem);
-  max-width: 132px;
+  font-size: clamp(0.86rem, 0.96vw, 1.02rem);
+  max-width: 148px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.2;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
 }
 
@@ -1823,19 +1830,32 @@ button.seat-tile.is-empty:hover {
   flex-shrink: 0;
 }
 
+.seat-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+
+.seat--top .seat-stats {
+  justify-content: flex-start;
+}
+
 .seat-score {
   display: inline-flex;
   align-items: baseline;
   gap: 3px;
-  margin-top: 2px;
   padding: 2px 9px;
   border-radius: 999px;
   background: rgba(242, 198, 109, 0.14);
-  border: 1px solid rgba(242, 198, 109, 0.34);
+  border: 1px solid rgba(242, 198, 109, 0.36);
   font-size: clamp(0.76rem, 0.84vw, 0.88rem);
   font-weight: 600;
   color: rgba(255, 232, 178, 0.88);
   font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  white-space: nowrap;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
@@ -3335,8 +3355,10 @@ button.seat-tile.is-empty:hover {
     padding: 4px 5px 4px 10px;
   }
 
-  .seat--left .seat-info { text-align: left; }
-  .seat--right .seat-info { text-align: right; }
+  .seat--left .seat-info { align-items: flex-start; text-align: left; }
+  .seat--right .seat-info { align-items: flex-end; text-align: right; }
+  .seat--left .seat-stats { justify-content: flex-start; }
+  .seat--right .seat-stats { justify-content: flex-end; }
 
   .seat--left.is-turn,
   .seat--right.is-turn {
@@ -3435,7 +3457,8 @@ button.seat-tile.is-empty:hover {
   .sel-chip.is-no-plays { padding: 6px 14px; font-size: 0.84rem; }
   .sel-chip.is-your-turn { padding: 6px 15px; font-size: 0.82rem; }
   .sel-chip.is-queued-chip { padding: 5px 12px; font-size: 0.78rem; }
-  .seat-count { min-width: 28px; height: 23px; padding: 0 6px; font-size: 0.78rem; right: -6px; bottom: -5px; }
+  .seat-count { padding: 1px 7px; font-size: 0.72rem; }
+  .seat-count strong { font-size: 0.82rem; }
   .seat-score { padding: 1px 7px; font-size: 0.72rem; }
   .seat-score strong { font-size: 0.82rem; }
   .stat-pill { padding: 2px 7px; font-size: 0.72rem; }

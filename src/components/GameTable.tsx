@@ -142,16 +142,8 @@ function Seat({
           timer={isTurn ? timer : null}
         />
         {justFinished && <span className="finish-halo" aria-hidden="true" />}
-        {player.finishRank ? (
+        {player.finishRank && (
           <span className={`medal medal--${player.finishRank}`}>{player.finishRank}</span>
-        ) : (
-          <span
-            className={`seat-count${player.cardCount <= 2 ? ' is-low' : ''}`}
-            title={`${player.cardCount} cards left`}
-          >
-            <Layers size={11} className="seat-count-ico" />
-            <span>{player.cardCount}</span>
-          </span>
         )}
         {inGrace && player.reconnectGraceUntil ? (
           <span className={`bubble ${player.swapDevice ? 'bubble--swap' : 'bubble--grace'}`}>
@@ -175,8 +167,19 @@ function Seat({
           {player.isHost && <Crown size={12} className="seat-crown" />}
           <span>{player.name}</span>
         </div>
-        <div className="seat-score">
-          <strong>{player.score}</strong> pts
+        <div className="seat-stats">
+          <span className="seat-score">
+            <strong>{player.score}</strong> pts
+          </span>
+          {!player.finishRank && (
+            <span
+              className={`seat-count${player.cardCount <= 2 ? ' is-low' : ''}`}
+              title={`${player.cardCount} cards left`}
+            >
+              <Layers size={12} className="seat-count-ico" />
+              <strong>{player.cardCount}</strong>
+            </span>
+          )}
         </div>
       </div>
 
@@ -1099,11 +1102,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
             <div className="me-info">
               <div className="me-name">
                 <span className="me-name-text">{me?.name}</span>
-                {isAfk ? (
-                  <span className="afk-pill">AFK · Bot</span>
-                ) : (
-                  isMyTurn && <span className="turn-pill">Your turn</span>
-                )}
+                {isAfk && <span className="afk-pill">AFK · Bot</span>}
                 {me?.finishRank && (
                   <span className={`medal medal--${me.finishRank} medal--inline`}>
                     {ORDINALS[me.finishRank]}
