@@ -54,6 +54,8 @@ export interface Player {
   isBot: boolean;
   autoPlay?: boolean;
   disconnected?: boolean;
+  reconnectGraceUntil?: number | null;
+  swapDevice?: boolean;
   transport: PlayerTransport;
   cards: Card[];
   passed: boolean;
@@ -71,6 +73,8 @@ export interface SanitizedPlayer {
   isBot: boolean;
   autoPlay?: boolean;
   disconnected?: boolean;
+  reconnectGraceUntil?: number | null;
+  swapDevice?: boolean;
   transport: PlayerTransport;
   cards: Card[] | null; // non-null only for the viewing player
   cardCount: number;
@@ -198,4 +202,5 @@ export type ClientIntent =
   | { type: 'TRADE_CANCEL' }
   | { type: 'DISMISS_DICE' }
   | { type: 'TOGGLE_AUTOPLAY' }
+  | { type: 'PREPARE_SWAP_DEVICE' }
   | { type: 'CHAT'; text: string };

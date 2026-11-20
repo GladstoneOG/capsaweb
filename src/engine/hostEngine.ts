@@ -122,6 +122,12 @@ export class CapsaHostEngine {
       this.state.turnDeadline = null;
       return;
     }
+    const current = this.state.players[this.state.turnIndex];
+    // Pause turn countdown while waiting for a disconnected player's grace period
+    if (current?.disconnected && !current.isBot && current.reconnectGraceUntil) {
+      this.state.turnDeadline = null;
+      return;
+    }
     const duration = this.state.rules.turnDuration;
     this.state.turnDeadline = duration > 0 ? this.now() + duration * 1000 : null;
   }
@@ -136,22 +142,45 @@ export class CapsaHostEngine {
   }): ActionResult & { restored?: boolean } {
     const cleanName = options.name.trim().slice(0, 20) || `Player ${this.state.players.length + 1}`;
 
-    // Check if returning session
-    const existing = this.state.players.find(
+    // 1. Check exact sessionId match (same device/tab)
+    let existing = this.state.players.find(
       (p) => p.sessionId && p.sessionId === options.sessionId
     );
+    let crossDevice = false;
+
+    // 2. Fallback: match a currently disconnected seat by name (case-insensitive) for PC <-> phone rejoin
+    if (!existing) {
+      const lower = cleanName.toLowerCase();
+      existing = this.state.players.find(
+        (p) => p.disconnected && !p.isHost && p.name.toLowerCase() === lower
+      );
+      if (existing) crossDevice = true;
+    }
+
     if (existing) {
       const oldId = existing.id;
       existing.id = options.peerId;
+      existing.sessionId = options.sessionId;
       existing.name = cleanName;
       existing.isBot = false;
+      existing.autoPlay = false;
       existing.disconnected = false;
+      existing.reconnectGraceUntil = null;
+      existing.swapDevice = false;
       existing.transport = options.transport;
       if (this.state.gameState !== 'lobby') {
         existing.isReady = true;
       }
       this.replacePlayerIdReferences(oldId, options.peerId);
-      this.pushActivity('system', 'System', `${existing.name} rejoined the table.`, true);
+      this.pushActivity(
+        'system',
+        'System',
+        crossDevice
+          ? `${existing.name} rejoined from another device and took back control.`
+          : `${existing.name} rejoined the table.`,
+        true
+      );
+      this.resetTurnDeadline();
       this.bumpVersion();
       return { ok: true, restored: true };
     }
@@ -205,18 +234,79 @@ export class CapsaHostEngine {
       return;
     }
 
-    // Mid-match: keep seat and hand, let bot take over until they rejoin
-    player.isBot = true;
-    player.isReady = true;
+    // If the player explicitly initiated a 60s device swap, preserve their grace timer
+    if (player.swapDevice && player.disconnected && player.reconnectGraceUntil) {
+      return;
+    }
+
+    // Unintentional disconnect: give a 15-second grace period before bot takeover
     player.disconnected = true;
-    player.transport = 'bot';
+    player.isReady = true;
+    player.isBot = false;
+    player.swapDevice = false;
+    player.transport = 'connecting';
+    player.reconnectGraceUntil = this.now() + 15_000;
     this.pushActivity(
       'system',
       'System',
-      `${player.name} disconnected. A bot will cover their seat until they rejoin.`,
+      `${player.name} disconnected. Waiting 15s for rejoin before bot takeover.`,
       true
     );
+    this.resetTurnDeadline();
     this.bumpVersion();
+  }
+
+  prepareSwapDevice(actorId: string): ActionResult {
+    if (this.state.gameState === 'lobby') {
+      return { ok: false, error: 'Cannot switch devices from lobby.' };
+    }
+    const player = this.state.players.find((p) => p.id === actorId);
+    if (!player || player.isBot) return { ok: false, error: 'Invalid player.' };
+    if (player.isHost) {
+      return { ok: false, error: 'Host cannot switch devices while hosting the table.' };
+    }
+
+    player.disconnected = true;
+    player.swapDevice = true;
+    player.isBot = false;
+    player.autoPlay = false;
+    player.transport = 'connecting';
+    player.reconnectGraceUntil = this.now() + 60_000;
+
+    this.pushActivity(
+      'system',
+      'System',
+      `${player.name} is switching devices (60s grace period to rejoin).`,
+      true
+    );
+    this.resetTurnDeadline();
+    this.bumpVersion();
+    return { ok: true };
+  }
+
+  expireReconnectGrace(): boolean {
+    const now = this.now();
+    let changed = false;
+    for (const p of this.state.players) {
+      if (p.disconnected && !p.isBot && p.reconnectGraceUntil && p.reconnectGraceUntil <= now) {
+        p.isBot = true;
+        p.transport = 'bot';
+        p.reconnectGraceUntil = null;
+        p.swapDevice = false;
+        this.pushActivity(
+          'system',
+          'System',
+          `${p.name}'s grace period ended. A bot is now covering their seat until they rejoin.`,
+          true
+        );
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.resetTurnDeadline();
+      this.bumpVersion();
+    }
+    return changed;
   }
 
   private replacePlayerIdReferences(oldId: string, newId: string): void {
@@ -972,6 +1062,8 @@ export class CapsaHostEngine {
         isBot: p.isBot,
         autoPlay: Boolean(p.autoPlay),
         disconnected: p.disconnected,
+        reconnectGraceUntil: p.reconnectGraceUntil ?? null,
+        swapDevice: Boolean(p.swapDevice),
         transport: p.transport,
         cards: p.id === viewerId || revealAll ? [...p.cards] : null,
         cardCount: p.cards.length,

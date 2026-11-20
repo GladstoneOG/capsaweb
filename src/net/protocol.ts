@@ -8,6 +8,7 @@ export interface LobbyListing {
   maxPlayers: number;
   gameState: string;
   rulesSummary: string;
+  rejoinableCount: number;
   updatedAt: number;
 }
 

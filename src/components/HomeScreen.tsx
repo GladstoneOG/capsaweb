@@ -103,7 +103,9 @@ export function HomeScreen({
   }, [loadRooms]);
 
   const handleSelectRoom = (room: LobbyListing) => {
-    if (busy || room.gameState !== 'lobby' || room.playerCount >= room.maxPlayers) return;
+    const canJoinLobby = room.gameState === 'lobby' && room.playerCount < room.maxPlayers;
+    const canRejoin = room.gameState !== 'lobby' && (room.rejoinableCount ?? 0) > 0;
+    if (busy || (!canJoinLobby && !canRejoin)) return;
     if (room.hasPassword) {
       setJoinPromptRoom({ code: room.code, hostName: room.hostName });
       setJoinPassword('');
@@ -242,8 +244,10 @@ export function HomeScreen({
             <div className="lobbies-list">
               {rooms.map((room) => {
                 const isOpen = room.gameState === 'lobby' && room.playerCount < room.maxPlayers;
+                const canRejoin = room.gameState !== 'lobby' && (room.rejoinableCount ?? 0) > 0;
+                const clickable = isOpen || canRejoin;
                 return (
-                  <div key={room.code} className={`lobby-item${isOpen ? '' : ' is-busy'}`}>
+                  <div key={room.code} className={`lobby-item${clickable ? '' : ' is-busy'}`}>
                     <Avatar name={room.hostName} size="sm" />
                     <div className="lobby-item-main">
                       <div className="lobby-item-top">
@@ -259,20 +263,27 @@ export function HomeScreen({
                         <span>
                           {room.playerCount}/{room.maxPlayers} players
                         </span>
+                        {canRejoin && (
+                          <span className="rejoin-hint">
+                            · {room.rejoinableCount} seat{room.rejoinableCount > 1 ? 's' : ''} open to rejoin
+                          </span>
+                        )}
                         {room.rulesSummary && <span>· {room.rulesSummary}</span>}
                       </div>
                     </div>
                     <button
                       type="button"
-                      className={`btn btn-sm ${isOpen ? 'btn-primary' : 'btn-ghost'}`}
-                      disabled={!isOpen || busy}
+                      className={`btn btn-sm ${isOpen ? 'btn-primary' : canRejoin ? 'btn-rejoin' : 'btn-ghost'}`}
+                      disabled={!clickable || busy}
                       onClick={() => handleSelectRoom(room)}
                     >
-                      {room.gameState !== 'lobby'
-                        ? 'In game'
-                        : room.playerCount >= room.maxPlayers
-                          ? 'Full'
-                          : 'Join'}
+                      {isOpen
+                        ? 'Join'
+                        : canRejoin
+                          ? 'Rejoin'
+                          : room.gameState !== 'lobby'
+                            ? 'In game'
+                            : 'Full'}
                     </button>
                   </div>
                 );

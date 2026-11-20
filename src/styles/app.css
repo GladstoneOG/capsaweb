@@ -145,6 +145,23 @@ input:focus-visible {
   border-color: rgba(255, 255, 255, 0.28);
 }
 
+.btn-rejoin {
+  background: rgba(94, 234, 212, 0.16);
+  border: 1px solid rgba(94, 234, 212, 0.5);
+  color: var(--mint);
+  font-weight: 700;
+}
+
+.btn-rejoin:hover:not(:disabled) {
+  background: rgba(94, 234, 212, 0.26);
+  border-color: var(--mint);
+}
+
+.rejoin-hint {
+  color: var(--mint);
+  font-weight: 600;
+}
+
 .link-btn {
   display: inline-flex;
   align-items: center;
@@ -1554,6 +1571,18 @@ button.seat-tile.is-empty:hover {
   color: #261204;
 }
 
+.bubble--grace {
+  background: rgba(54, 38, 12, 0.94);
+  border-color: rgba(242, 198, 109, 0.65);
+  color: var(--gold-2);
+}
+
+.bubble--swap {
+  background: rgba(14, 42, 56, 0.94);
+  border-color: rgba(125, 211, 252, 0.65);
+  color: var(--sky);
+}
+
 .seat-info {
   text-align: center;
 }
@@ -2595,6 +2624,103 @@ button.seat-tile.is-empty:hover {
   font-size: 0.86rem;
   font-weight: 600;
   color: var(--text-2);
+}
+
+/* Closing play recap in Scoreboard */
+.closing-play {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.closing-play-label {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.closing-play-label strong {
+  color: var(--gold-2);
+}
+
+.closing-play-cards {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.closing-play-slot {
+  margin-left: -14px;
+}
+
+.closing-play-slot:first-child {
+  margin-left: 0;
+}
+
+/* Seat Controls (AFK & Switch Device) */
+.profile-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-opt-card {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line-2);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.profile-opt-card:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(242, 198, 109, 0.5);
+  transform: translateY(-1px);
+}
+
+.profile-opt-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: rgba(242, 198, 109, 0.16);
+  border: 1px solid rgba(242, 198, 109, 0.35);
+  color: var(--gold-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.profile-opt-icon.is-sky {
+  background: rgba(125, 211, 252, 0.16);
+  border-color: rgba(125, 211, 252, 0.38);
+  color: var(--sky);
+}
+
+.profile-opt-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.profile-opt-text strong {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.profile-opt-text small {
+  font-size: 0.78rem;
+  color: var(--text-2);
+  line-height: 1.38;
 }
 
 /* ==================== CHAT DRAWER ==================== */

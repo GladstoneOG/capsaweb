@@ -10,6 +10,7 @@ import {
   MessageCircle,
   RotateCcw,
   Rows2,
+  Smartphone,
   Sparkles,
   Trophy,
   Volume2,
@@ -90,23 +91,28 @@ function Seat({
   isTurn,
   timer,
   justFinished,
+  clockOffset,
 }: {
   player: SanitizedPlayer;
   pos: SeatPos;
   isTurn: boolean;
   timer: TimerInfo | null;
   justFinished: boolean;
+  clockOffset: number;
 }) {
   const fanCount = Math.min(player.cardCount, 7);
-  const bubble = player.disconnected
-    ? 'Offline'
-    : player.finishRank
-      ? `${ORDINALS[player.finishRank]} · Out!`
-      : player.passed
-        ? 'Pass'
-        : player.autoPlay
-          ? 'AFK · Bot'
-          : null;
+  const inGrace = Boolean(player.disconnected && !player.isBot && player.reconnectGraceUntil);
+  const bubble = inGrace
+    ? null
+    : player.disconnected
+      ? 'Bot (DC)'
+      : player.finishRank
+        ? `${ORDINALS[player.finishRank]} · Out!`
+        : player.passed
+          ? 'Pass'
+          : player.autoPlay
+            ? 'AFK · Bot'
+            : null;
 
   return (
     <div
@@ -122,7 +128,7 @@ function Seat({
           isBot={player.isBot || Boolean(player.autoPlay)}
           size="md"
           active={isTurn}
-          dimmed={player.disconnected}
+          dimmed={player.disconnected && !inGrace}
           timer={isTurn ? timer : null}
         />
         {justFinished && <span className="finish-halo" aria-hidden="true" />}
@@ -133,13 +139,20 @@ function Seat({
             {player.cardCount}
           </span>
         )}
-        {bubble && (
-          <span
-            key={bubble}
-            className={`bubble${player.finishRank ? ` bubble--rank-${player.finishRank}` : ''}`}
-          >
-            {bubble}
+        {inGrace && player.reconnectGraceUntil ? (
+          <span className={`bubble ${player.swapDevice ? 'bubble--swap' : 'bubble--grace'}`}>
+            {player.swapDevice ? 'Swap · ' : 'Wait · '}
+            <CountdownText deadline={player.reconnectGraceUntil} offset={clockOffset} />
           </span>
+        ) : (
+          bubble && (
+            <span
+              key={bubble}
+              className={`bubble${player.finishRank ? ` bubble--rank-${player.finishRank}` : ''}`}
+            >
+              {bubble}
+            </span>
+          )
         )}
       </div>
 
@@ -202,6 +215,10 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const [seenActivityCount, setSeenActivityCount] = useState(room.activity.length);
   const [tradePickerOpen, setTradePickerOpen] = useState(false);
   const [afkConfirmOpen, setAfkConfirmOpen] = useState(false);
+  const [scoreboardVisible, setScoreboardVisible] = useState(
+    () => room.gameState === 'roundover' || room.gameState === 'gameover'
+  );
+  const clockOffset = useMemo(() => room.serverNow - Date.now(), [room.serverNow]);
 
   // Celebratory & impact effects state
   const [finishBanner, setFinishBanner] = useState<FinishBanner | null>(null);
@@ -359,18 +376,32 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     }
   }, [room.lastTrick, room.viewerId]);
 
-  // ---------- Sound cues ----------
+  // ---------- Sound cues & delayed scoreboard so the closing play is clearly visible ----------
   const prevTurnRef = useRef(false);
   const prevGameStateRef = useRef(room.gameState);
   useEffect(() => {
     if (isMyTurn && !prevTurnRef.current) sfx.yourTurn();
     prevTurnRef.current = isMyTurn;
   }, [isMyTurn]);
+
   useEffect(() => {
-    if ((room.gameState === 'roundover' || room.gameState === 'gameover') && prevGameStateRef.current === 'playing') {
-      sfx.roundWin();
-    }
+    const isEnd = room.gameState === 'roundover' || room.gameState === 'gameover';
+    const wasPlaying = prevGameStateRef.current === 'playing';
     prevGameStateRef.current = room.gameState;
+
+    if (!isEnd) {
+      setScoreboardVisible(false);
+      return;
+    }
+
+    if (wasPlaying) {
+      sfx.roundWin();
+      setScoreboardVisible(false);
+      const id = window.setTimeout(() => setScoreboardVisible(true), 2200);
+      return () => window.clearTimeout(id);
+    }
+
+    setScoreboardVisible(true);
   }, [room.gameState]);
 
   useEffect(() => {
@@ -476,6 +507,15 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
       setAfkConfirmOpen(true);
     }
   }, [isAfk, onIntent]);
+
+  const handleSwapDevice = useCallback(() => {
+    setAfkConfirmOpen(false);
+    setSelectedIds([]);
+    onIntent({ type: 'PREPARE_SWAP_DEVICE' });
+    window.setTimeout(() => {
+      onLeave();
+    }, 180);
+  }, [onIntent, onLeave]);
 
   // ---------- Keyboard shortcuts ----------
   useEffect(() => {
@@ -634,6 +674,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               isTurn={currentPlayer?.id === player.id && room.gameState === 'playing' && !diceActive}
               timer={timerData?.info ?? null}
               justFinished={celebratingId === player.id}
+              clockOffset={clockOffset}
             />
           ))}
 
@@ -759,6 +800,19 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
                 {error ? (
                   <div key={`err_${error}`} className="note-chip is-error is-static">
                     {error}
+                  </div>
+                ) : (room.gameState === 'roundover' || room.gameState === 'gameover') && !scoreboardVisible ? (
+                  <div className="note-chip is-trick is-static">
+                    <Sparkles size={13} />
+                    <span>Round complete — tallying scores…</span>
+                  </div>
+                ) : currentPlayer?.disconnected && !currentPlayer.isBot && currentPlayer.reconnectGraceUntil ? (
+                  <div className="note-chip is-static">
+                    <span>
+                      Waiting for <strong>{currentPlayer.name}</strong>{' '}
+                      {currentPlayer.swapDevice ? 'to switch devices' : 'to reconnect'} (
+                      <CountdownText deadline={currentPlayer.reconnectGraceUntil} offset={clockOffset} />)
+                    </span>
                   </div>
                 ) : (
                   trickBanner &&
@@ -1000,7 +1054,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
       {/* ================= OVERLAYS ================= */}
       {afkConfirmOpen && (
         <div className="modal-backdrop" onClick={() => setAfkConfirmOpen(false)}>
-          <div className="modal modal--center" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className="modal-close"
@@ -1009,29 +1063,49 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
             >
               <X size={16} />
             </button>
-            <div className="eyebrow">
-              <Bot size={13} /> AFK takeover
-            </div>
-            <h2 className="modal-title">Let a bot play for you?</h2>
-            <p className="modal-sub">
-              You'll stay seated at the table while a bot plays your turns automatically. Click your avatar anytime to take back control.
-            </p>
-            <div className="modal-actions">
-              <button type="button" className="btn btn-ghost" onClick={() => setAfkConfirmOpen(false)}>
-                Cancel
-              </button>
+            <div className="eyebrow">Seat controls · {me?.name}</div>
+            <h2 className="modal-title">Step away or switch devices</h2>
+            <p className="modal-sub">Choose how you'd like your seat handled while you're away.</p>
+
+            <div className="profile-options">
               <button
                 type="button"
-                className="btn btn-primary"
+                className="profile-opt-card"
                 onClick={() => {
                   setAfkConfirmOpen(false);
                   setSelectedIds([]);
                   onIntent({ type: 'TOGGLE_AUTOPLAY' });
                 }}
               >
-                <Bot size={16} />
-                Enable bot takeover
+                <span className="profile-opt-icon">
+                  <Bot size={20} />
+                </span>
+                <div className="profile-opt-text">
+                  <strong>AFK Bot Takeover</strong>
+                  <small>Stay seated while a bot plays your turns. Click your avatar anytime to resume.</small>
+                </div>
               </button>
+
+              {room.mode === 'multiplayer' && (
+                <button
+                  type="button"
+                  className="profile-opt-card"
+                  disabled={isHost}
+                  onClick={handleSwapDevice}
+                >
+                  <span className="profile-opt-icon is-sky">
+                    <Smartphone size={20} />
+                  </span>
+                  <div className="profile-opt-text">
+                    <strong>Switch Device (1 min grace)</strong>
+                    <small>
+                      {isHost
+                        ? 'Unavailable while hosting — closing the host tab closes the room.'
+                        : `Exit here and tap Rejoin on your phone using "${me?.name}" within 60s before a bot takes over.`}
+                    </small>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1061,7 +1135,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
         />
       )}
 
-      {(room.gameState === 'roundover' || room.gameState === 'gameover') && (
+      {(room.gameState === 'roundover' || room.gameState === 'gameover') && scoreboardVisible && (
         <ScoreboardModal room={room} isHost={isHost} onIntent={onIntent} onLeave={onLeave} />
       )}
 

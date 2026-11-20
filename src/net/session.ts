@@ -58,6 +58,7 @@ class HostAutomation {
   private botTimer: number | null = null;
   private diceTimer: number | null = null;
   private turnTimer: number | null = null;
+  private graceTimer: number | null = null;
   private botTradeAttemptedKey: string | null = null;
 
   constructor(
@@ -68,6 +69,20 @@ class HostAutomation {
   schedule(): void {
     this.clearTimers();
     const state = this.engine.getState();
+
+    // 0. Schedule grace-period expiration for any disconnected human awaiting rejoin/device swap
+    const graceDeadlines = state.players
+      .filter((p) => p.disconnected && !p.isBot && typeof p.reconnectGraceUntil === 'number')
+      .map((p) => p.reconnectGraceUntil!);
+    if (graceDeadlines.length > 0) {
+      const earliest = Math.min(...graceDeadlines);
+      const delay = Math.max(50, earliest - Date.now());
+      this.graceTimer = window.setTimeout(() => {
+        if (this.engine.expireReconnectGrace()) {
+          this.onStateChanged();
+        }
+      }, delay);
+    }
 
     if (state.gameState !== 'playing') {
       this.botTradeAttemptedKey = null;
@@ -89,6 +104,10 @@ class HostAutomation {
     const pendingTrade = state.tradingState?.pendingRequest;
     if (pendingTrade && pendingTrade.targetPlayerId) {
       const target = state.players.find((p) => p.id === pendingTrade.targetPlayerId);
+      if (target?.disconnected && !target.isBot && target.reconnectGraceUntil) {
+        // Hold trade response during grace period
+        return;
+      }
       if (target && (target.isBot || target.autoPlay)) {
         this.botTimer = window.setTimeout(() => {
           const decision = evaluateBotTradeFulfill(target.cards, pendingTrade.requestedCard);
@@ -103,8 +122,14 @@ class HostAutomation {
       }
     }
 
-    // 2. Check if current turn belongs to a bot (or AFK human)
+    // 2. Check if current turn belongs to a disconnected player still in their grace window
     const current = state.players[state.turnIndex];
+    if (current?.disconnected && !current.isBot && current.reconnectGraceUntil) {
+      // Wait cleanly for rejoin or graceTimer expiration
+      return;
+    }
+
+    // 3. Check if current turn belongs to a bot (or AFK human)
     if (current && (current.isBot || current.autoPlay) && current.cards.length > 0 && !pendingTrade) {
       const turnKey = `${state.roundNumber}_${state.stateVersion}_${current.id}`;
       this.botTimer = window.setTimeout(() => {
@@ -184,6 +209,10 @@ class HostAutomation {
       window.clearTimeout(this.turnTimer);
       this.turnTimer = null;
     }
+    if (this.graceTimer !== null) {
+      window.clearTimeout(this.graceTimer);
+      this.graceTimer = null;
+    }
   }
 }
 
@@ -223,6 +252,8 @@ function executeIntentOnEngine(
       return engine.dismissDiceShowdown();
     case 'TOGGLE_AUTOPLAY':
       return engine.toggleAutoPlay(actorId);
+    case 'PREPARE_SWAP_DEVICE':
+      return engine.prepareSwapDevice(actorId);
     case 'CHAT':
       return engine.addChat(actorId, intent.text);
   }
@@ -659,7 +690,8 @@ export class HostMultiplayerSession implements GameSession {
     if (s.rules.enableTrading) parts.push('Trading');
     parts.push(`First to ${s.rules.pointsToWin}`);
     const rulesSummary = parts.join(' · ');
-    const metaKey = `${host?.name ?? ''}|${s.players.length}|${s.gameState}|${rulesSummary}`;
+    const rejoinableCount = s.players.filter((p) => p.disconnected).length;
+    const metaKey = `${host?.name ?? ''}|${s.players.length}|${s.gameState}|${rulesSummary}|${rejoinableCount}`;
     if (!force && metaKey === this.lastMetaKey) return;
     this.lastMetaKey = metaKey;
     this.sendSignal({
@@ -668,6 +700,7 @@ export class HostMultiplayerSession implements GameSession {
       playerCount: s.players.length,
       gameState: s.gameState,
       rulesSummary,
+      rejoinableCount,
     });
   }
 

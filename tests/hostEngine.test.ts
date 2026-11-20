@@ -190,34 +190,105 @@ describe('CapsaHostEngine Authoritative Rules & Scoring', () => {
     expect(engine.getState().players.every((p) => p.score === 0)).toBe(true);
   });
 
-  it('covers disconnected peers with a bot and restores exact seat on session rejoin', () => {
+  it('gives a 15s disconnect grace period before bot takeover and supports cross-device rejoin by name', () => {
+    let clock = 1_000_000;
     const engine = new CapsaHostEngine({
       code: 'RECN',
       mode: 'multiplayer',
       hostId: 'host_1',
       hostSessionId: 'sess_host',
       hostName: 'Host',
+      now: () => clock,
     });
-    engine.addOrRestorePeer({ peerId: 'peer_old', sessionId: 'sess_bob', name: 'Bob', transport: 'p2p' });
+    engine.addOrRestorePeer({ peerId: 'peer_old', sessionId: 'sess_pc', name: 'Bob', transport: 'p2p' });
     engine.toggleReady('peer_old');
     engine.startGame('host_1');
 
+    // Active connected player cannot be hijacked by another session with the same name
+    expect(
+      engine.addOrRestorePeer({ peerId: 'intruder', sessionId: 'sess_other', name: 'bob', transport: 'p2p' }).ok
+    ).toBe(false);
+
     const originalCards = [...engine.getState().players[1].cards];
     engine.handlePeerDisconnect('peer_old');
-    expect(engine.getState().players[1].isBot).toBe(true);
+    // During 15s grace window: disconnected = true, isBot = false, reconnectGraceUntil = clock + 15000
     expect(engine.getState().players[1].disconnected).toBe(true);
+    expect(engine.getState().players[1].isBot).toBe(false);
+    expect(engine.getState().players[1].reconnectGraceUntil).toBe(clock + 15_000);
 
+    // Before 15s: grace does not expire
+    clock += 10_000;
+    expect(engine.expireReconnectGrace()).toBe(false);
+    expect(engine.getState().players[1].isBot).toBe(false);
+
+    // After 15s: bot takes over
+    clock += 5_000;
+    expect(engine.expireReconnectGrace()).toBe(true);
+    expect(engine.getState().players[1].isBot).toBe(true);
+    expect(engine.getState().players[1].reconnectGraceUntil).toBeNull();
+
+    // Phone rejoins with a brand-new sessionId and same name (case-insensitive) and reclaims seat from bot
     const restored = engine.addOrRestorePeer({
-      peerId: 'peer_new',
-      sessionId: 'sess_bob',
-      name: 'Bob',
+      peerId: 'peer_phone',
+      sessionId: 'sess_phone',
+      name: 'bob',
       transport: 'p2p',
     });
     expect(restored.ok).toBe(true);
     expect(restored.restored).toBe(true);
-    expect(engine.getState().players[1].id).toBe('peer_new');
+    expect(engine.getState().players[1].id).toBe('peer_phone');
+    expect(engine.getState().players[1].sessionId).toBe('sess_phone');
     expect(engine.getState().players[1].isBot).toBe(false);
+    expect(engine.getState().players[1].disconnected).toBe(false);
     expect(engine.getState().players[1].cards).toEqual(originalCards);
+  });
+
+  it('supports 60s Switch Device grace period preserved across socket disconnect', () => {
+    let clock = 2_000_000;
+    const engine = new CapsaHostEngine({
+      code: 'SWAP',
+      mode: 'multiplayer',
+      hostId: 'host_1',
+      hostSessionId: 'sess_host',
+      hostName: 'Host',
+      now: () => clock,
+    });
+    engine.addOrRestorePeer({ peerId: 'peer_pc', sessionId: 'sess_pc', name: 'Alice', transport: 'p2p' });
+    engine.toggleReady('peer_pc');
+    engine.startGame('host_1');
+
+    // Host cannot swap devices
+    expect(engine.prepareSwapDevice('host_1').ok).toBe(false);
+
+    // Peer initiates 60s swap
+    expect(engine.prepareSwapDevice('peer_pc').ok).toBe(true);
+    expect(engine.getState().players[1].swapDevice).toBe(true);
+    expect(engine.getState().players[1].disconnected).toBe(true);
+    expect(engine.getState().players[1].isBot).toBe(false);
+    expect(engine.getState().players[1].reconnectGraceUntil).toBe(clock + 60_000);
+
+    // Subsequent WebSocket disconnect preserves the 60s grace timer (does NOT downgrade to 15s)
+    clock += 2_000;
+    engine.handlePeerDisconnect('peer_pc');
+    expect(engine.getState().players[1].reconnectGraceUntil).toBe(2_060_000);
+
+    // Still waiting at 45s
+    clock += 43_000;
+    expect(engine.expireReconnectGrace()).toBe(false);
+    expect(engine.getState().players[1].isBot).toBe(false);
+
+    // Rejoins on phone at 50s -> cancels grace and resumes immediately
+    clock += 5_000;
+    const restored = engine.addOrRestorePeer({
+      peerId: 'peer_phone',
+      sessionId: 'sess_phone',
+      name: 'Alice',
+      transport: 'p2p',
+    });
+    expect(restored.ok).toBe(true);
+    expect(engine.getState().players[1].swapDevice).toBe(false);
+    expect(engine.getState().players[1].reconnectGraceUntil).toBeNull();
+    expect(engine.getState().players[1].isBot).toBe(false);
   });
 
   it('supports Double Deck 13-card and 26-card modes via updateRules and completes 26-card round', () => {

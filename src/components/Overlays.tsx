@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { ArrowLeftRight, Play, Send, Trophy, X } from 'lucide-react';
-import { RANKS, SUITS, SUIT_SYMBOLS, cardToString } from '@engine/cards';
+import { COMBO_LABELS, RANKS, SUITS, SUIT_SYMBOLS, cardToString } from '@engine/cards';
 import type {
   ActivityEntry,
   Card,
@@ -201,6 +201,7 @@ export function ScoreboardModal({
   const top = sorted[0];
   const me = room.players.find((p) => p.id === room.viewerId);
   const iWon = isGameOver ? top?.id === room.viewerId : me?.finishRank === 1;
+  const closingPlayer = room.players.find((p) => p.id === room.lastPlayerPlayedId);
   const headline = isGameOver
     ? iWon
       ? 'You won the match!'
@@ -253,6 +254,22 @@ export function ScoreboardModal({
         <p className="fine-print">
           +3 / +2 / +1 / 0 per round · first to {room.rules.pointsToWin} wins
         </p>
+
+        {room.activePlay && (
+          <div className="closing-play">
+            <div className="closing-play-label">
+              Closing play · <strong>{COMBO_LABELS[room.activePlay.type]}</strong>
+              {closingPlayer && <span> by {closingPlayer.name}</span>}
+            </div>
+            <div className="closing-play-cards">
+              {room.activePlay.cards.map((card) => (
+                <div key={card.id} className="closing-play-slot">
+                  <PlayingCard card={card} size="sm" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="modal-actions">
           <button type="button" className="btn btn-ghost" onClick={onLeave}>

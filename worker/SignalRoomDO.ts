@@ -23,6 +23,7 @@ interface IncomingSignal {
   playerCount?: number;
   gameState?: string;
   rulesSummary?: string;
+  rejoinableCount?: number;
 }
 
 export interface LobbyListing {
@@ -33,6 +34,7 @@ export interface LobbyListing {
   maxPlayers: number;
   gameState: string;
   rulesSummary: string;
+  rejoinableCount: number;
   updatedAt: number;
 }
 
@@ -66,9 +68,17 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
         max_players INTEGER NOT NULL DEFAULT 4,
         game_state TEXT NOT NULL DEFAULT 'lobby',
         rules_summary TEXT NOT NULL DEFAULT '',
+        rejoinable_count INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL
       )
     `);
+    try {
+      this.ctx.storage.sql.exec(
+        'ALTER TABLE rooms ADD COLUMN rejoinable_count INTEGER NOT NULL DEFAULT 0'
+      );
+    } catch {
+      // Column already exists
+    }
     this.registryInitialized = true;
   }
 
@@ -83,6 +93,7 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
     playerCount: number;
     gameState: string;
     rulesSummary: string;
+    rejoinableCount?: number;
   }): Promise<void> {
     try {
       await this.getRegistryStub().fetch('https://signal.internal/registry/upsert', {
@@ -139,9 +150,9 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
       this.ctx.storage.sql.exec('DELETE FROM rooms WHERE updated_at < ?', cutoff);
       const rows = this.ctx.storage.sql
         .exec(
-          `SELECT code, host_name, has_password, player_count, max_players, game_state, rules_summary, updated_at
+          `SELECT code, host_name, has_password, player_count, max_players, game_state, rules_summary, rejoinable_count, updated_at
            FROM rooms
-           ORDER BY CASE WHEN game_state = 'lobby' THEN 0 ELSE 1 END, updated_at DESC
+           ORDER BY CASE WHEN game_state = 'lobby' THEN 0 WHEN rejoinable_count > 0 THEN 1 ELSE 2 END, updated_at DESC
            LIMIT 30`
         )
         .toArray();
@@ -153,6 +164,7 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
         maxPlayers: Number(r.max_players),
         gameState: String(r.game_state),
         rulesSummary: String(r.rules_summary || ''),
+        rejoinableCount: Number(r.rejoinable_count || 0),
         updatedAt: Number(r.updated_at),
       }));
       return Response.json({ rooms });
@@ -167,16 +179,18 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
         playerCount: number;
         gameState: string;
         rulesSummary?: string;
+        rejoinableCount?: number;
       };
       this.ctx.storage.sql.exec(
-        `INSERT INTO rooms (code, host_name, has_password, player_count, max_players, game_state, rules_summary, updated_at)
-         VALUES (?, ?, ?, ?, 4, ?, ?, ?)
+        `INSERT INTO rooms (code, host_name, has_password, player_count, max_players, game_state, rules_summary, rejoinable_count, updated_at)
+         VALUES (?, ?, ?, ?, 4, ?, ?, ?, ?)
          ON CONFLICT(code) DO UPDATE SET
            host_name = excluded.host_name,
            has_password = excluded.has_password,
            player_count = excluded.player_count,
            game_state = excluded.game_state,
            rules_summary = excluded.rules_summary,
+           rejoinable_count = excluded.rejoinable_count,
            updated_at = excluded.updated_at`,
         body.code.toUpperCase(),
         (body.hostName || 'Host').slice(0, 24),
@@ -184,6 +198,7 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
         Math.max(1, Math.min(4, Number(body.playerCount) || 1)),
         body.gameState || 'lobby',
         (body.rulesSummary || '').slice(0, 80),
+        Math.max(0, Math.min(4, Number(body.rejoinableCount) || 0)),
         Date.now()
       );
       return Response.json({ ok: true });
@@ -395,6 +410,7 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
           playerCount: parsed.playerCount ?? 1,
           gameState: parsed.gameState || 'lobby',
           rulesSummary: parsed.rulesSummary || '',
+          rejoinableCount: parsed.rejoinableCount ?? 0,
         });
         break;
       }
