@@ -1,0 +1,17 @@
+{
+  "name": "Capsa Banting",
+  "short_name": "Capsa Banting",
+  "description": "Fast, multiplayer Capsa Banting (Big Two) card tables with friends or bots.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#040b08",
+  "theme_color": "#06241b",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1087,13 +1087,23 @@ export async function createRoomCode(hostName: string, password?: string): Promi
   return data.roomCode;
 }
 
-export async function fetchOpenRooms(): Promise<LobbyListing[]> {
+export interface OpenRoomsResult {
+  rooms: LobbyListing[];
+  ok: boolean;
+}
+
+export async function fetchOpenRoomsResult(): Promise<OpenRoomsResult> {
   try {
     const res = await fetch('/api/rooms');
-    if (!res.ok) return [];
+    if (!res.ok) return { rooms: [], ok: false };
     const data = (await res.json()) as { rooms?: LobbyListing[] };
-    return Array.isArray(data.rooms) ? data.rooms : [];
+    return { rooms: Array.isArray(data.rooms) ? data.rooms : [], ok: true };
   } catch {
-    return [];
+    return { rooms: [], ok: false };
   }
+}
+
+export async function fetchOpenRooms(): Promise<LobbyListing[]> {
+  const { rooms } = await fetchOpenRoomsResult();
+  return rooms;
 }

@@ -1,0 +1,1014 @@
+/* Motion, Effects & Game Juice overrides (owned by motion)
+ * Hard performance rules:
+ *  - Animate ONLY `transform` and `opacity` (plus SVG stroke on the single active timer ring).
+ *  - No permanent `will-change` floods across many nodes.
+ *  - All kinetic motion gated cleanly by `prefers-reduced-motion: reduce` while keeping
+ *    functional timers and readable callout banners intact.
+ */
+
+/* ==================== 1. GPU LAYER & WILL-CHANGE HYGIENE ==================== */
+
+.fan-flip,
+.table-shell::before,
+.table-shell::after,
+.dock-bar::before,
+.turn-beacon-beam,
+.sel-chip.is-your-turn,
+.act-btn--pass-alert,
+.act-btn--pass-alert::after,
+.seat.is-turn .seat-avatar::before {
+  will-change: auto;
+}
+
+.impact-burst-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 118;
+}
+
+/* ==================== 2. SCREEN ENTRANCE & AMBIENT LIFE ==================== */
+
+.home,
+.lobby,
+.table-shell {
+  animation: screenEnter 260ms var(--ease-out) backwards;
+}
+
+@keyframes screenEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0) scale(0.99);
+  }
+}
+
+/* Gentle staggered float on home hero cards after initial heroRise */
+.hero-card {
+  animation:
+    heroRise 0.38s var(--ease-spring) backwards,
+    heroFloat 4.6s ease-in-out calc(0.45s + (var(--off) + 2) * 180ms) infinite;
+}
+
+@keyframes heroFloat {
+  0%,
+  100% {
+    transform:
+      rotate(calc(var(--off) * 9deg))
+      translate3d(0, calc(var(--off) * var(--off) * 4.5px), 0);
+  }
+  50% {
+    transform:
+      rotate(calc(var(--off) * 9.5deg))
+      translate3d(0, calc(var(--off) * var(--off) * 4.5px - 5px), 0);
+  }
+}
+
+/* Live open-lobbies radar pulse */
+.live-dot {
+  position: relative;
+}
+
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--mint);
+  pointer-events: none;
+  animation: liveDotPing 2.2s ease-out infinite;
+}
+
+@keyframes liveDotPing {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.75);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+/* ==================== 3. TURN CHOREOGRAPHY & 3-STAGE URGENCY TIMER ==================== */
+
+/* Calm steady edge/dock warmth on turn arrival; reserve continuous pulsing for 8s nudge or <=7s urgency */
+.table-shell.is-my-turn::before,
+.table-shell.is-my-turn::after {
+  animation: none;
+  opacity: 0.78;
+}
+
+.dock-bar.is-turn::before {
+  animation: none;
+  opacity: 0.72;
+}
+
+.table-shell.is-my-turn.is-turn-nudged::before,
+.table-shell.is-my-turn.is-turn-nudged::after,
+.table-shell.is-my-turn.is-urgent-turn::before,
+.table-shell.is-my-turn.is-urgent-turn::after {
+  animation: bottomTurnPulse 1.3s ease-in-out infinite;
+}
+
+.table-shell.is-my-turn.is-turn-nudged .dock-bar.is-turn::before,
+.table-shell.is-my-turn.is-urgent-turn .dock-bar.is-turn::before {
+  animation: dockTurnGlow 1.3s ease-in-out infinite;
+}
+
+.sel-chip.is-your-turn {
+  animation: popIn 0.22s var(--ease-spring);
+}
+
+/* 3-stage color progression synchronized with timerDrain (gold -> amber -> coral urgency) */
+.avatar-timer-bar {
+  animation-name: timerDrain, timerColor;
+  animation-timing-function: linear, linear;
+  animation-fill-mode: forwards, forwards;
+}
+
+@keyframes timerColor {
+  0%,
+  62% {
+    stroke: var(--gold-2);
+  }
+  76% {
+    stroke: #ffb347;
+  }
+  86%,
+  100% {
+    stroke: var(--coral);
+  }
+}
+
+.stat-pill--timer.is-urgent-pill {
+  border-color: rgba(255, 122, 107, 0.75);
+  animation: urgentTimerBeat 0.85s ease-in-out infinite;
+}
+
+@keyframes urgentTimerBeat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.08);
+  }
+}
+
+/* Mandatory opening card (3♦) subtle breathing lift */
+.pcard.is-start:not(.is-selected):not(:hover) {
+  transform: translate3d(0, -6px, 0);
+}
+
+.pcard.is-start::after {
+  animation: startDotPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes startDotPulse {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.22);
+  }
+}
+
+/* ==================== 4. REAL-COORDINATE ARC-AND-SLAM CARD PLAY ==================== */
+
+.trick-card.is-fresh {
+  animation: tossSlam 330ms cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+
+.trick.is-heavy .trick-card.is-fresh {
+  animation: tossSlamHeavy 410ms cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 38ms);
+}
+
+@keyframes tossSlam {
+  0% {
+    opacity: 0.12;
+    transform: translate3d(var(--fx, 0px), var(--fy, 180px), 0) scale(0.78) rotate(calc(var(--rot, 0deg) * 2.2));
+  }
+  46% {
+    opacity: 1;
+    transform: translate3d(calc(var(--fx, 0px) * 0.22), calc(var(--fy, 180px) * 0.22 - 22px), 0) scale(1.14)
+      rotate(calc(var(--rot, 0deg) * 0.6));
+  }
+  82% {
+    opacity: 1;
+    transform: translate3d(0, calc(var(--dy, 0px) + 2px), 0) scale(0.96) rotate(var(--rot, 0deg));
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, var(--dy, 0px), 0) scale(1) rotate(var(--rot, 0deg));
+  }
+}
+
+@keyframes tossSlamHeavy {
+  0% {
+    opacity: 0.1;
+    transform: translate3d(var(--fx, 0px), var(--fy, 180px), 0) scale(0.74) rotate(calc(var(--rot, 0deg) * 2.5));
+  }
+  48% {
+    opacity: 1;
+    transform: translate3d(calc(var(--fx, 0px) * 0.18), calc(var(--fy, 180px) * 0.18 - 34px), 0) scale(1.22)
+      rotate(calc(var(--rot, 0deg) * 0.45));
+  }
+  82% {
+    opacity: 1;
+    transform: translate3d(0, calc(var(--dy, 0px) + 3px), 0) scale(0.94) rotate(var(--rot, 0deg));
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, var(--dy, 0px), 0) scale(1) rotate(var(--rot, 0deg));
+  }
+}
+
+/* Felt landing impact ripple under every play */
+.felt-ripple {
+  position: absolute;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 240, 200, 0.38);
+  pointer-events: none;
+  z-index: 2;
+  animation: feltRippleOut 420ms var(--ease-out) forwards;
+}
+
+.felt-ripple--five {
+  border-width: 2.5px;
+  border-color: rgba(255, 224, 150, 0.62);
+  animation-duration: 540ms;
+}
+
+.felt-ripple--bomb {
+  border-width: 3px;
+  border-color: rgba(255, 165, 110, 0.8);
+  animation-duration: 620ms;
+}
+
+@keyframes feltRippleOut {
+  from {
+    opacity: 0.9;
+    transform: scale(0.55);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
+/* Metallic foil sheen on Big Two (2♠) when played */
+.trick-card.is-big-two .pcard {
+  overflow: hidden;
+}
+
+.trick-card.is-big-two .pcard::before {
+  content: '';
+  position: absolute;
+  inset: -20% -60%;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    rgba(255, 232, 168, 0.65) 50%,
+    transparent 65%
+  );
+  pointer-events: none;
+  z-index: 5;
+  animation: foilSweep 720ms var(--ease-out) 160ms both;
+}
+
+@keyframes foilSweep {
+  from {
+    opacity: 0.9;
+    transform: translate3d(-110%, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(110%, 0, 0);
+  }
+}
+
+/* ==================== 5. RECEDING UNDER-PLAY & TRICK SWEEP ==================== */
+
+.trick--under {
+  animation: underRecede 260ms var(--ease-out) both;
+}
+
+@keyframes underRecede {
+  from {
+    opacity: 0.92;
+    transform: scale(1) translate3d(0, 0, 0) rotate(0deg);
+  }
+  to {
+    opacity: 0.36;
+    transform: scale(0.92) translate3d(-12px, 10px, 0) rotate(-4deg);
+  }
+}
+
+.trick--sweep {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  animation: trickSweepOut 420ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes trickSweepOut {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  36% {
+    opacity: 0.96;
+    transform: translate3d(0, 0, 0) scale(0.86);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--tx, 0px), var(--ty, -160px), 0) scale(0.46) rotate(8deg);
+  }
+}
+
+.lead-hint.is-delayed {
+  animation: fadeIn 240ms var(--ease-out) 220ms backwards;
+}
+
+/* ==================== 6. 4-TIER COMBO JUICE LADDER & NON-COLLIDING LANES ==================== */
+
+/* Separate vertical lanes so finish-banner, combo-splash, and turn-flash never overlap */
+.finish-banner {
+  top: 7%;
+}
+
+.combo-splash {
+  top: 17%;
+  letter-spacing: 0.08em;
+  animation: comboKinetic 1.35s var(--ease-out) forwards;
+}
+
+.turn-flash {
+  top: auto;
+  bottom: clamp(14px, 2.6vh, 26px);
+  animation: turnFlashBottom 1.35s var(--ease-out) both;
+}
+
+@keyframes turnFlashBottom {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, 14px, 0) scale(0.86);
+  }
+  16% {
+    opacity: 1;
+    transform: translate3d(-50%, 0, 0) scale(1.05);
+  }
+  28%,
+  74% {
+    opacity: 1;
+    transform: translate3d(-50%, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, 8px, 0) scale(0.96);
+  }
+}
+
+.combo-splash--straight {
+  background: linear-gradient(135deg, #d7fff6 0%, var(--mint) 55%, #2bb7a1 100%);
+  color: #06251f;
+}
+
+.combo-splash--flush {
+  background: linear-gradient(135deg, #dff4ff 0%, var(--sky) 55%, #3b82f6 100%);
+  color: #071b2d;
+}
+
+.combo-splash--flush.is-flush-red {
+  background: linear-gradient(135deg, #ffd6d0 0%, var(--coral) 55%, #d33a3a 100%);
+  color: #240707;
+}
+
+.combo-splash--fullhouse {
+  background: linear-gradient(135deg, #fff1c2 0%, var(--gold) 60%, #c98a26 100%);
+  color: #1c1204;
+  animation: comboHeavySlam 1.45s var(--ease-out) forwards;
+}
+
+.combo-splash--bomber,
+.combo-splash--straightflush {
+  overflow: hidden;
+  animation: comboBombSlam 1.55s var(--ease-out) forwards;
+}
+
+.combo-splash--straightflush {
+  background: linear-gradient(135deg, #fff5c8 0%, #5eead4 46%, #f2c66d 100%);
+  color: #091d19;
+}
+
+.combo-splash--bomber::after,
+.combo-splash--straightflush::after {
+  content: '';
+  position: absolute;
+  inset: -20% -50%;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.68) 50%, transparent 65%);
+  animation: foilSweep 680ms var(--ease-out) 140ms both;
+}
+
+.shockwave--secondary {
+  border-width: 2px;
+  border-color: rgba(255, 130, 100, 0.8);
+  animation-delay: 95ms;
+  animation-duration: 700ms;
+}
+
+@keyframes comboKinetic {
+  0% {
+    opacity: 0;
+    transform: translate3d(-24px, 12px, 0) skewX(-8deg) scale(0.76);
+  }
+  18% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) skewX(-6deg) scale(1.08);
+  }
+  30%,
+  74% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0) skewX(-4deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(12px, -16px, 0) skewX(-4deg) scale(0.95);
+  }
+}
+
+@keyframes comboHeavySlam {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -14px, 0) scale(1.55);
+  }
+  16% {
+    opacity: 1;
+    transform: translate3d(0, 2px, 0) scale(0.94);
+  }
+  26%,
+  76% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -16px, 0) scale(0.95);
+  }
+}
+
+@keyframes comboBombSlam {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -20px, 0) skewX(-8deg) scale(1.75);
+  }
+  15% {
+    opacity: 1;
+    transform: translate3d(0, 3px, 0) skewX(-6deg) scale(0.92);
+  }
+  26%,
+  78% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) skewX(-5deg) scale(1.04);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -20px, 0) skewX(-5deg) scale(0.94);
+  }
+}
+
+/* ==================== 7. CHOREOGRAPHED CENTER-SHOE DEAL ==================== */
+
+.deal-shoe {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: dealShoeFade 620ms var(--ease-out) forwards;
+}
+
+.deal-shoe .card-back:nth-child(2) {
+  position: absolute;
+  transform: translate3d(2px, -2px, 0) rotate(3deg);
+}
+
+.deal-shoe .card-back:nth-child(3) {
+  position: absolute;
+  transform: translate3d(4px, -4px, 0) rotate(6deg);
+}
+
+@keyframes dealShoeFade {
+  0% {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  70% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.65);
+  }
+}
+
+.hand {
+  perspective: 900px;
+}
+
+.hand.is-dealing .fan-slot {
+  animation: dealFromShoe 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 26ms);
+}
+
+.hand.is-two-rows.is-dealing .fan-slot {
+  animation-delay: calc(var(--i, 0) * 16ms);
+}
+
+@keyframes dealFromShoe {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -160px, 0) scale(0.56) rotateY(130deg);
+  }
+  65% {
+    opacity: 1;
+  }
+}
+
+.seat-fan.is-dealing .seat-fan-slot {
+  animation: seatFanDeal 280ms var(--ease-out) backwards;
+  animation-delay: calc(80ms + var(--i, 0) * 28ms);
+}
+
+@keyframes seatFanDeal {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.6);
+  }
+}
+
+/* ==================== 8. HAND FEEL, SELECTION ANTICIPATION & TOUCH HOVER FIX ==================== */
+
+/* Guard hover lift so touchscreens don't leave tapped cards stuck elevated */
+@media (hover: none) {
+  .pcard.is-interactive:hover:not(.is-selected) {
+    transform: translateZ(0);
+  }
+  .pcard.is-selected:hover {
+    transform: translateY(-24px) scale(1.03);
+  }
+}
+
+/* Keep selected ghost styling without doubling the -24px vertical lift */
+.drag-ghost .pcard.is-selected {
+  transform: none;
+}
+
+/* Tactile button press squish (preserve visual.css's bevel press on .act-btn--play.is-ready) */
+.tool-btn:active:not(:disabled),
+.icon-btn:active:not(:disabled),
+.act-btn--ghost:active:not(:disabled),
+.act-btn--queue:active:not(:disabled),
+.act-btn--queued:active:not(:disabled),
+.act-btn--pass-alert:active:not(:disabled) {
+  transform: scale(0.95) translate3d(0, 1px, 0);
+  transition-duration: 70ms;
+}
+
+/* Play button shine sweep when ready to slam */
+.act-btn--play.is-ready {
+  position: relative;
+  overflow: hidden;
+}
+
+.act-btn--play.is-ready::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.45) 50%,
+    transparent 70%
+  );
+  pointer-events: none;
+  animation: playBtnSheen 2.4s ease-in-out infinite;
+}
+
+@keyframes playBtnSheen {
+  0%,
+  55% {
+    opacity: 0;
+    transform: translate3d(-120%, 0, 0);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(120%, 0, 0);
+  }
+}
+
+/* Subtle gold shimmer wave across selected cards when a valid 5-card combo is assembled */
+.hand.is-five-ready .pcard.is-selected {
+  overflow: hidden;
+}
+
+.hand.is-five-ready .pcard.is-selected::before {
+  content: '';
+  position: absolute;
+  inset: -20% -60%;
+  background: linear-gradient(
+    115deg,
+    transparent 36%,
+    rgba(255, 232, 168, 0.52) 50%,
+    transparent 64%
+  );
+  pointer-events: none;
+  z-index: 4;
+  animation: foilSweep 560ms var(--ease-out) both;
+}
+
+/* Newly received card from Card Trading */
+.fan-slot.is-trade-arrived .pcard {
+  animation: tradeCardArrive 720ms var(--ease-spring) both;
+}
+
+@keyframes tradeCardArrive {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -64px, 0) scale(0.84);
+  }
+  60% {
+    opacity: 1;
+    transform: translate3d(0, 4px, 0) scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* ==================== 9. LIVING OPPONENTS, PASS RECOIL & LAST-CARD ALERT ==================== */
+
+/* Subtle card-peek breathing on the active opponent's fan */
+.seat.is-turn .seat-fan:not(.is-dealing) .seat-fan-slot:nth-child(4),
+.seat.is-turn .seat-fan:not(.is-dealing) .seat-fan-slot:last-child:nth-child(-n + 3) {
+  animation: seatThinkPeek 1.9s ease-in-out infinite;
+}
+
+@keyframes seatThinkPeek {
+  0%,
+  100% {
+    transform: rotate(calc(var(--off) * 7deg)) translate3d(0, calc(var(--off) * var(--off) * 0.7px), 0);
+  }
+  50% {
+    transform: rotate(calc(var(--off) * 7deg + 2deg)) translate3d(0, calc(var(--off) * var(--off) * 0.7px - 4px), 0);
+  }
+}
+
+/* Crisp directional recoil when an opponent passes */
+.seat--left.is-just-passed {
+  animation: recoilLeft 260ms var(--ease-out);
+}
+.seat--right.is-just-passed {
+  animation: recoilRight 260ms var(--ease-out);
+}
+.seat--top.is-just-passed {
+  animation: recoilTop 260ms var(--ease-out);
+}
+
+@keyframes recoilLeft {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  40% { transform: translate3d(-7px, 0, 0); }
+}
+
+@keyframes recoilRight {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  40% { transform: translate3d(7px, 0, 0); }
+}
+
+@keyframes recoilTop {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  40% { transform: translate3d(0, -6px, 0); }
+}
+
+/* Card-count pop on change */
+.seat-count-num {
+  display: inline-block;
+  animation: countBump 220ms var(--ease-spring);
+}
+
+@keyframes countBump {
+  0% { transform: scale(1.32); }
+  100% { transform: scale(1); }
+}
+
+/* "1 CARD!" last-card alert badge */
+.seat-low-alert {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translate3d(-50%, 0, 0);
+  z-index: 12;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff998c 0%, var(--coral) 100%);
+  color: #240707;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(255, 122, 107, 0.55);
+  animation: lowAlertPop 1.65s var(--ease-out) forwards;
+}
+
+@keyframes lowAlertPop {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, 8px, 0) scale(0.72);
+  }
+  16% {
+    opacity: 1;
+    transform: translate3d(-50%, -2px, 0) scale(1.1);
+  }
+  28%,
+  78% {
+    opacity: 1;
+    transform: translate3d(-50%, -2px, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -12px, 0) scale(0.94);
+  }
+}
+
+/* Matching pulse ring on viewer's own <= 2 cards pill */
+.stat-pill--cards.is-low {
+  position: relative;
+}
+
+.stat-pill--cards.is-low::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 1.5px solid var(--coral);
+  pointer-events: none;
+  animation: dangerPulse 1.4s ease-out infinite;
+}
+
+/* ==================== 10. FLOATING ROUND POINTS, SCOREBOARD & DICE DUEL ==================== */
+
+.stat-pill--pts {
+  position: relative;
+}
+
+.seat-pts-float {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translate3d(-50%, 0, 0);
+  z-index: 15;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--gold-2) 0%, var(--gold) 100%);
+  color: #1c1306;
+  font-size: 0.82rem;
+  font-weight: 900;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(242, 198, 109, 0.5);
+  animation: floatGain 1.6s var(--ease-out) forwards;
+}
+
+.seat-pts-float--self {
+  top: -20px;
+}
+
+@keyframes floatGain {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, 10px, 0) scale(0.72);
+  }
+  20% {
+    opacity: 1;
+    transform: translate3d(-50%, -8px, 0) scale(1.1);
+  }
+  75% {
+    opacity: 1;
+    transform: translate3d(-50%, -24px, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -38px, 0) scale(0.95);
+  }
+}
+
+/* Scoreboard GPU scaleX progress bar fill (zero animated width) */
+.standing-bar span.standing-bar-fill {
+  width: 100%;
+  transform-origin: left center;
+  transition: transform 560ms var(--ease-out);
+}
+
+.standing-gain.has-gain {
+  animation: gainPop 360ms var(--ease-spring) var(--d, 140ms) backwards;
+}
+
+@keyframes gainPop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+/* Distinct Win vs. Loss scoreboard trophy choreography */
+.trophy {
+  position: relative;
+}
+
+.trophy.is-victory {
+  animation: trophyPop 520ms var(--ease-spring) backwards;
+}
+
+.modal--match-win .trophy.is-victory::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(255, 225, 160, 0.28) 0deg 20deg,
+    transparent 20deg 45deg,
+    rgba(255, 225, 160, 0.28) 45deg 65deg,
+    transparent 65deg 90deg,
+    rgba(255, 225, 160, 0.28) 90deg 110deg,
+    transparent 110deg 135deg,
+    rgba(255, 225, 160, 0.28) 135deg 155deg,
+    transparent 155deg 180deg,
+    rgba(255, 225, 160, 0.28) 180deg 200deg,
+    transparent 200deg 225deg,
+    rgba(255, 225, 160, 0.28) 225deg 245deg,
+    transparent 245deg 270deg,
+    rgba(255, 225, 160, 0.28) 270deg 290deg,
+    transparent 290deg 315deg,
+    rgba(255, 225, 160, 0.28) 315deg 335deg,
+    transparent 335deg 360deg
+  );
+  -webkit-mask-image: radial-gradient(circle, #000 32%, transparent 72%);
+  mask-image: radial-gradient(circle, #000 32%, transparent 72%);
+  pointer-events: none;
+  z-index: -1;
+  animation: spin 16s linear infinite;
+}
+
+.trophy.is-loss {
+  background: linear-gradient(150deg, rgba(188, 203, 195, 0.16), rgba(125, 150, 139, 0.06));
+  border-color: rgba(188, 203, 195, 0.3);
+  color: var(--text-2);
+}
+
+@keyframes trophyPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.45) rotate(-14deg);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.1) rotate(4deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.closing-play-slot {
+  animation: popIn 260ms var(--ease-spring) backwards;
+  animation-delay: calc(180ms + var(--i, 0) * 45ms);
+}
+
+/* Dice Duel rolling suspense & landing pop */
+.die.is-rolling {
+  animation: dieRattle 160ms linear infinite;
+}
+
+.die.is-landed {
+  animation: dieLandPop 280ms var(--ease-spring) both;
+}
+
+.duel-side.is-winner {
+  animation: popIn 280ms var(--ease-spring);
+}
+
+.duel-tie-note {
+  animation: fadeIn 220ms ease;
+}
+
+@keyframes dieRattle {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-6deg) scale(1.03); }
+  25% { transform: translate3d(-2px, -3px, 0) rotate(7deg) scale(1.06); }
+  50% { transform: translate3d(2px, 1px, 0) rotate(-5deg) scale(1.02); }
+  75% { transform: translate3d(-1px, -2px, 0) rotate(5deg) scale(1.05); }
+}
+
+@keyframes dieLandPop {
+  0% { transform: scale(1.18) rotate(-8deg); }
+  65% { transform: scale(0.95) rotate(2deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+/* ==================== 11. SEMANTIC PREFERS-REDUCED-MOTION OVERRIDE ====================
+ * Fixes app.css's global 0.01ms wildcard which broke the SVG turn timer ring and hid
+ * forwards-fading callout banners. Preserves functional timer & readable opacity-only fades.
+ */
+
+@keyframes reducedFadeHold {
+  0% { opacity: 0; }
+  8%,
+  86% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Restore functional turn timer ring duration & color */
+  .avatar .avatar-timer-bar {
+    animation-name: timerDrain, timerColor !important;
+    animation-duration: var(--timer-dur, 30000ms), var(--timer-dur, 30000ms) !important;
+    animation-delay: var(--timer-delay, 0ms), var(--timer-delay, 0ms) !important;
+    animation-iteration-count: 1, 1 !important;
+    animation-timing-function: linear, linear !important;
+    animation-fill-mode: forwards, forwards !important;
+  }
+
+  /* Keep self-dismissing callouts visible for their hold window, opacity-only (no travel/scale) */
+  .turn-flash {
+    animation: reducedFadeHold 1.35s linear forwards !important;
+    transform: translate3d(-50%, 0, 0) !important;
+  }
+
+  .combo-splash {
+    animation: reducedFadeHold 1.35s linear forwards !important;
+    transform: none !important;
+  }
+
+  .finish-banner {
+    animation: reducedFadeHold 3s linear forwards !important;
+    transform: none !important;
+  }
+
+  .note-chip:not(.is-static) {
+    animation: reducedFadeHold 3.6s linear forwards !important;
+    transform: none !important;
+  }
+
+  .seat-low-alert {
+    animation: reducedFadeHold 1.6s linear forwards !important;
+    transform: translate3d(-50%, 0, 0) !important;
+  }
+
+  /* Suppress all decorative/kinetic pulses, glows, floats, ripples, and sweeps */
+  .hero-card,
+  .live-dot::after,
+  .felt-ripple,
+  .shockwave,
+  .deal-shoe,
+  .trick-card.is-big-two .pcard::before,
+  .hand.is-five-ready .pcard.is-selected::before,
+  .act-btn--play.is-ready::after,
+  .modal--match-win .trophy.is-victory::before,
+  .seat.is-turn .seat-fan-slot,
+  .stat-pill--cards.is-low::after,
+  .stat-pill--timer.is-urgent-pill,
+  .pcard.is-start::after,
+  .die.is-rolling,
+  .die.is-landed {
+    animation: none !important;
+  }
+
+  .felt-ripple,
+  .shockwave,
+  .deal-shoe,
+  .live-dot::after,
+  .act-btn--play.is-ready::after,
+  .modal--match-win .trophy.is-victory::before {
+    display: none !important;
+  }
+}

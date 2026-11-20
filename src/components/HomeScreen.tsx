@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowRight,
   Bot,
@@ -9,8 +9,9 @@ import {
   X,
 } from 'lucide-react';
 import type { Card } from '@engine/types';
-import { fetchOpenRooms, type LobbyListing } from '@net/session';
+import { fetchOpenRoomsResult, type LobbyListing } from '@net/session';
 import { Avatar } from './Avatar';
+import { Modal } from './Modal';
 import { PlayingCard } from './PlayingCard';
 
 const HERO_CARDS: Card[] = [
@@ -45,12 +46,17 @@ export function HomeScreen({
   const [showRules, setShowRules] = useState(false);
   const [rooms, setRooms] = useState<LobbyListing[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+  const [roomsError, setRoomsError] = useState(false);
   const [joinPromptRoom, setJoinPromptRoom] = useState<{
     code: string;
     hostName: string;
   } | null>(null);
   const [joinPassword, setJoinPassword] = useState('');
   const [liveInvite, setLiveInvite] = useState<{ code: string; hasPassword: boolean } | null>(null);
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const passwordTitleId = useId();
+  const rulesTitleId = useId();
 
   const cleanName = name.trim() || 'Player';
   const invitedCode = initialRoomCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
@@ -67,7 +73,7 @@ export function HomeScreen({
     }
   }, []);
 
-  // Validate any ?room=XXXX invite link; silently strip stale/closed room URLs
+  // Validate any ?room=XXXX invite link; explain if stale/closed before clearing URL
   useEffect(() => {
     if (invitedCode.length !== 4) return;
     let cancelled = false;
@@ -77,22 +83,31 @@ export function HomeScreen({
         if (cancelled) return;
         if (status?.hasHost) {
           setLiveInvite({ code: invitedCode, hasPassword: Boolean(status.hasPassword) });
+          setInviteNotice(null);
+          if (!initialName.trim()) {
+            nameInputRef.current?.focus();
+          }
         } else {
+          setInviteNotice(`Table ${invitedCode} has ended or is no longer open.`);
           clearRoomParam();
         }
       })
       .catch(() => {
-        if (!cancelled) clearRoomParam();
+        if (!cancelled) {
+          setInviteNotice(`Could not verify invite for table ${invitedCode}.`);
+          clearRoomParam();
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [invitedCode, clearRoomParam]);
+  }, [invitedCode, clearRoomParam, initialName]);
 
   const loadRooms = useCallback(async (showSpin = false) => {
     if (showSpin) setLoadingRooms(true);
-    const list = await fetchOpenRooms();
+    const { rooms: list, ok } = await fetchOpenRoomsResult();
     setRooms(list);
+    setRoomsError(!ok);
     setLoadingRooms(false);
   }, []);
 
@@ -141,34 +156,37 @@ export function HomeScreen({
           </h1>
           <p className="tagline">Host a table or hop right into an open lobby.</p>
 
+          {inviteNotice && (
+            <div className="invite-notice" role="status">
+              <span>{inviteNotice}</span>
+              <button
+                type="button"
+                className="icon-btn icon-btn--sm"
+                aria-label="Dismiss notice"
+                onClick={() => setInviteNotice(null)}
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
+
           {liveInvite && (
-            <div className="invite-banner">
+            <div className="invite-banner invite-banner--featured">
               <span>
-                Invite to <strong>{liveInvite.code}</strong>
+                You're invited to table <strong>{liveInvite.code}</strong>
                 {liveInvite.hasPassword && <Lock size={12} style={{ marginLeft: 5, verticalAlign: '-1px' }} />}
               </span>
-              <div className="invite-banner-actions">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  disabled={busy}
-                  onClick={handleAcceptInvite}
-                >
-                  Join
-                  <ArrowRight size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="icon-btn icon-btn--sm"
-                  aria-label="Dismiss invite"
-                  onClick={() => {
-                    setLiveInvite(null);
-                    clearRoomParam();
-                  }}
-                >
-                  <X size={13} />
-                </button>
-              </div>
+              <button
+                type="button"
+                className="icon-btn icon-btn--sm"
+                aria-label="Dismiss invite"
+                onClick={() => {
+                  setLiveInvite(null);
+                  clearRoomParam();
+                }}
+              >
+                <X size={13} />
+              </button>
             </div>
           )}
 
@@ -176,6 +194,7 @@ export function HomeScreen({
             <label className="field">
               <span className="field-label">Your name</span>
               <input
+                ref={nameInputRef}
                 className="input"
                 type="text"
                 maxLength={20}
@@ -187,7 +206,7 @@ export function HomeScreen({
 
             <label className="field">
               <span className="field-label">
-                <Lock size={11} /> Password <span className="opt-tag">optional</span>
+                <Lock size={11} /> Host password <span className="opt-tag">optional</span>
               </span>
               <input
                 className="input"
@@ -200,15 +219,38 @@ export function HomeScreen({
             </label>
           </div>
 
-          <button
-            type="button"
-            className="btn btn-primary btn-lg"
-            disabled={busy}
-            onClick={() => onHost(cleanName, password)}
-          >
-            <Users size={18} />
-            {busy ? 'Creating table…' : 'Host game'}
-          </button>
+          {liveInvite ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                disabled={busy}
+                onClick={handleAcceptInvite}
+              >
+                Join table {liveInvite.code}
+                <ArrowRight size={18} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busy}
+                onClick={() => onHost(cleanName, password)}
+              >
+                <Users size={16} />
+                {busy ? 'Creating table…' : 'Host your own table instead'}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary btn-lg"
+              disabled={busy}
+              onClick={() => onHost(cleanName, password)}
+            >
+              <Users size={18} />
+              {busy ? 'Creating table…' : 'Host game'}
+            </button>
+          )}
 
           <button type="button" className="link-btn" disabled={busy} onClick={() => onSolo(cleanName)}>
             <Bot size={16} />
@@ -238,7 +280,33 @@ export function HomeScreen({
 
           {rooms.length === 0 ? (
             <div className="lobbies-empty">
-              {loadingRooms ? 'Checking for active tables…' : 'No open tables right now — host one above!'}
+              {loadingRooms ? (
+                'Checking for active tables…'
+              ) : roomsError ? (
+                <div className="lobbies-empty-stack">
+                  <span>Couldn't reach the lobby server.</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void loadRooms(true)}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <div className="lobbies-empty-stack">
+                  <span>No open tables right now — host one above!</span>
+                  <button
+                    type="button"
+                    className="link-btn link-btn--sm"
+                    disabled={busy}
+                    onClick={() => onSolo(cleanName)}
+                  >
+                    <Bot size={14} />
+                    Quick solo practice vs bots
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="lobbies-list">
@@ -293,7 +361,7 @@ export function HomeScreen({
         </section>
 
         <div className="home-foot">
-          <span>Peer-to-peer · no sign-up</span>
+          <span>Instant tables · no sign-up</span>
           <button type="button" className="link-btn link-btn--sm" onClick={() => setShowRules(true)}>
             <HelpCircle size={14} />
             How to play
@@ -303,86 +371,86 @@ export function HomeScreen({
 
       {/* Password Prompt Modal for locked rooms */}
       {joinPromptRoom && (
-        <div className="modal-backdrop" onClick={() => setJoinPromptRoom(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              className="modal-close"
-              aria-label="Close"
-              onClick={() => setJoinPromptRoom(null)}
-            >
-              <X size={16} />
-            </button>
-            <div className="eyebrow">
-              <Lock size={12} /> Locked table · {joinPromptRoom.code}
-            </div>
-            <h2 className="modal-title">Join {joinPromptRoom.hostName}</h2>
-            <p className="modal-sub">Enter the room password to take a seat.</p>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!joinPassword.trim()) return;
-                const target = joinPromptRoom;
-                setJoinPromptRoom(null);
-                onJoin(target.code, cleanName, joinPassword);
-              }}
-            >
-              <input
-                className="input"
-                type="password"
-                autoFocus
-                placeholder="Room password"
-                value={joinPassword}
-                onChange={(e) => setJoinPassword(e.target.value)}
-              />
-              <div className="modal-actions">
-                <button type="button" className="btn btn-ghost" onClick={() => setJoinPromptRoom(null)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={!joinPassword.trim()}>
-                  Join table
-                  <ArrowRight size={15} />
-                </button>
-              </div>
-            </form>
+        <Modal labelledBy={passwordTitleId} onClose={() => setJoinPromptRoom(null)}>
+          <button
+            type="button"
+            className="modal-close"
+            aria-label="Close"
+            onClick={() => setJoinPromptRoom(null)}
+          >
+            <X size={16} />
+          </button>
+          <div className="eyebrow">
+            <Lock size={12} /> Locked table · {joinPromptRoom.code}
           </div>
-        </div>
+          <h2 id={passwordTitleId} className="modal-title">
+            Join {joinPromptRoom.hostName}
+          </h2>
+          <p className="modal-sub">Enter the room password to take a seat.</p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!joinPassword.trim()) return;
+              const target = joinPromptRoom;
+              setJoinPromptRoom(null);
+              onJoin(target.code, cleanName, joinPassword);
+            }}
+          >
+            <input
+              className="input"
+              type="password"
+              autoFocus
+              placeholder="Room password"
+              value={joinPassword}
+              onChange={(e) => setJoinPassword(e.target.value)}
+            />
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setJoinPromptRoom(null)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={!joinPassword.trim()}>
+                Join table
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {showRules && (
-        <div className="modal-backdrop" onClick={() => setShowRules(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="modal-close" aria-label="Close" onClick={() => setShowRules(false)}>
-              <X size={16} />
-            </button>
-            <div className="eyebrow">Quick rules</div>
-            <h2 className="modal-title">How Capsa works</h2>
-            <ul className="rules-list">
-              <li>
-                <b>Goal:</b> be the first to empty your hand. 4 players, 13 cards each (or 26 in Double Deck 26).
-              </li>
-              <li>
-                <b>Order:</b> 3 is lowest, 2 is highest. Suits go ♦ &lt; ♣ &lt; ♥ &lt; ♠.
-              </li>
-              <li>
-                <b>Opening:</b> whoever holds 3♦ leads, and has to play it.
-              </li>
-              <li>
-                <b>Combos:</b> singles, pairs, triples, or five-card hands — Straight &lt; Flush &lt; Full House &lt;
-                Bomber &lt; Straight Flush. Flushes compare by suit first.
-              </li>
-              <li>
-                <b>Bombs:</b> a Bomber or Straight Flush can slam a single 2 or a pair of 2s.
-              </li>
-              <li>
-                <b>Hibah:</b> win a trick with your last card and the lead passes to the next player.
-              </li>
-              <li>
-                <b>Scoring:</b> 1st +3, 2nd +2, 3rd +1, last 0. First to the target wins.
-              </li>
-            </ul>
-          </div>
-        </div>
+        <Modal labelledBy={rulesTitleId} onClose={() => setShowRules(false)}>
+          <button type="button" className="modal-close" aria-label="Close" onClick={() => setShowRules(false)}>
+            <X size={16} />
+          </button>
+          <div className="eyebrow">Quick rules</div>
+          <h2 id={rulesTitleId} className="modal-title">
+            How Capsa Banting works
+          </h2>
+          <ul className="rules-list">
+            <li>
+              <b>Goal:</b> be the first to empty your hand. 4 players, 13 cards each (or 26 in Double Deck 26).
+            </li>
+            <li>
+              <b>Order:</b> 3 is lowest, 2 is highest. Suits go ♦ &lt; ♣ &lt; ♥ &lt; ♠.
+            </li>
+            <li>
+              <b>Opening:</b> whoever holds 3♦ leads, and has to play it.
+            </li>
+            <li>
+              <b>Combos:</b> singles, pairs, triples, or five-card hands — Straight &lt; Flush &lt; Full House &lt;
+              Bomber &lt; Straight Flush. Flushes compare by suit first.
+            </li>
+            <li>
+              <b>Bombs:</b> a Bomber or Straight Flush can slam a single 2 or a pair of 2s.
+            </li>
+            <li>
+              <b>Hibah:</b> win a trick with your last card and the lead passes to the next player.
+            </li>
+            <li>
+              <b>Scoring:</b> 1st +3, 2nd +2, 3rd +1, last 0. First to the target wins.
+            </li>
+          </ul>
+        </Modal>
       )}
     </div>
   );

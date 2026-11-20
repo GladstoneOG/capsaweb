@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import { Check, Copy, Crown, LogOut, Plus, Share2, Sparkles, Wifi, X } from 'lucide-react';
 import type { CapsaRules, ClientIntent, SanitizedRoomState } from '@engine/types';
 import { Avatar } from './Avatar';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface LobbyViewProps {
   room: SanitizedRoomState;
@@ -51,8 +52,11 @@ function Toggle({
 
 export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
   const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const me = room.players.find((p) => p.id === room.viewerId);
   const isHost = Boolean(me?.isHost);
+  const hasHumanPeers = room.mode === 'multiplayer' && room.players.some((p) => !p.isHost && !p.isBot);
   const allReady = room.players.every((p) => p.isReady || p.isHost);
   const emptySlots = Math.max(0, 4 - room.players.length);
   const isSolo = room.mode === 'solo';
@@ -61,13 +65,31 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
 
   const share = async () => {
     try {
-      if (navigator.share && /Mobi|Android/i.test(navigator.userAgent)) {
-        await navigator.share({ title: 'Capsa Banting', text: `Join my Capsa table: ${room.code}`, url: inviteLink });
+      if (typeof navigator.share === 'function') {
+        await navigator.share({
+          title: 'Capsa Banting',
+          text: `Join my Capsa Banting table: ${room.code}`,
+          url: inviteLink,
+        });
         return;
       }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+    }
+    try {
       await navigator.clipboard?.writeText(inviteLink);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // ignore
+    }
+  };
+
+  const copyRoomCode = async () => {
+    try {
+      await navigator.clipboard?.writeText(room.code);
+      setCopiedCode(true);
+      window.setTimeout(() => setCopiedCode(false), 1800);
     } catch {
       // ignore
     }
@@ -112,15 +134,23 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
                 <button
                   type="button"
                   className="icon-btn icon-btn--sm"
-                  aria-label="Copy code"
-                  onClick={() => void navigator.clipboard?.writeText(room.code)}
+                  aria-label={copiedCode ? 'Code copied' : 'Copy room code'}
+                  title={copiedCode ? 'Code copied' : 'Copy room code'}
+                  onClick={() => void copyRoomCode()}
                 >
-                  <Copy size={14} />
+                  {copiedCode ? <Check size={14} /> : <Copy size={14} />}
                 </button>
+                {copiedCode && <span className="copy-feedback" role="status">Code copied</span>}
               </div>
             )}
           </div>
-          <button type="button" className="icon-btn" aria-label="Leave" onClick={onLeave}>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Leave table"
+            title="Leave table"
+            onClick={() => setLeaveConfirmOpen(true)}
+          >
             <LogOut size={17} />
           </button>
         </header>
@@ -160,9 +190,18 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
                     )}
                     {p.isBot && <span className="tag">bot</span>}
                     {!p.isHost && !p.isBot && (
-                      <span className={`tag${p.transport === 'p2p' ? ' tag--mint' : ''}`}>
+                      <span
+                        className={`tag${p.transport === 'p2p' || p.transport === 'relay' ? ' tag--mint' : ''}`}
+                        title={
+                          p.transport === 'p2p'
+                            ? 'Direct connection'
+                            : p.transport === 'relay'
+                              ? 'Relayed connection'
+                              : 'Connecting to table'
+                        }
+                      >
                         <Wifi size={10} />
-                        {p.transport === 'p2p' ? 'p2p' : p.transport === 'relay' ? 'relay' : 'linking'}
+                        {p.transport === 'connecting' ? 'connecting' : 'online'}
                       </span>
                     )}
                   </div>
@@ -190,7 +229,7 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
                       <Plus size={20} />
                     </span>
                     <div className="tile-name">Open seat</div>
-                    <div className="tile-ready">A bot fills in</div>
+                    <div className="tile-ready">Bot fills on start</div>
                   </div>
                 )
               )}
@@ -339,6 +378,26 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
           </section>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={leaveConfirmOpen}
+        tone={isHost && hasHumanPeers ? 'danger' : 'default'}
+        eyebrow={isHost && hasHumanPeers ? 'Close table' : 'Leave lobby'}
+        title={isHost && hasHumanPeers ? 'Close this table?' : 'Leave the lobby?'}
+        description={
+          isHost && hasHumanPeers
+            ? "You're hosting this room — leaving will close the lobby for all connected players."
+            : isSolo
+              ? 'Return to the home screen.'
+              : 'You will return to the home screen and give up your seat.'
+        }
+        confirmLabel={isHost && hasHumanPeers ? 'Close table' : 'Leave lobby'}
+        onCancel={() => setLeaveConfirmOpen(false)}
+        onConfirm={() => {
+          setLeaveConfirmOpen(false);
+          onLeave();
+        }}
+      />
     </div>
   );
 }

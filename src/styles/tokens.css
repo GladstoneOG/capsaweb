@@ -23,19 +23,23 @@
   --sky: #7dd3fc;
 
   /* Cards */
-  --paper-1: #fffdf8;
-  --paper-2: #f2eadb;
-  --ink: #1b1d22;
-  --red: #d33a3a;
+  --paper-1: #fffef9;
+  --paper-2: #f4ecdc;
+  --ink: #171a21;
+  --red: #c91d2b;
 
   /* Text */
   --text: #f6f3ea;
   --text-2: #bccbc3;
-  --text-3: #7d968b;
+  --text-3: #8da69b;
 
   /* Surfaces */
-  --glass: rgba(12, 30, 24, 0.68);
-  --glass-strong: rgba(8, 20, 16, 0.92);
+  --glass: rgba(10, 26, 20, 0.74);
+  --glass-strong: rgba(7, 19, 15, 0.93);
+  --surface-raised: rgba(13, 33, 25, 0.84);
+  --surface-inset: rgba(4, 13, 10, 0.68);
+  --rail-leather: #1f120b;
+  --brass: rgba(242, 198, 109, 0.34);
   --line: rgba(255, 255, 255, 0.09);
   --line-2: rgba(255, 255, 255, 0.17);
 

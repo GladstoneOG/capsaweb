@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Card } from '@engine/types';
+import { prefersReducedMotion } from '../utils/motion';
 
 interface UseHandDragOptions {
   hand: Card[];
   onReorder: (nextIds: string[]) => void;
   onTap: (card: Card) => void;
+  onDragStart?: (card: Card) => void;
+  onSwap?: () => void;
+  onDragEnd?: () => void;
   resetKey: string | number;
 }
 
@@ -28,7 +32,27 @@ interface PendingPointer {
 const DRAG_THRESHOLD_PX = 6;
 const SETTLE_MS = 155;
 
-export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOptions) {
+/** Read computed Z-rotation (in degrees) of an element so the ghost settles cleanly into the fan angle. */
+function getElementRotationDeg(el: HTMLElement): number {
+  const tf = window.getComputedStyle(el).transform;
+  if (!tf || tf === 'none') return 0;
+  try {
+    const matrix = new DOMMatrixReadOnly(tf);
+    return Math.atan2(matrix.b, matrix.a) * (180 / Math.PI);
+  } catch {
+    return 0;
+  }
+}
+
+export function useHandDrag({
+  hand,
+  onReorder,
+  onTap,
+  onDragStart,
+  onSwap,
+  onDragEnd,
+  resetKey,
+}: UseHandDragOptions) {
   const [draggingCard, setDraggingCard] = useState<Card | null>(null);
   const [ghostDims, setGhostDims] = useState<{ w: number; h: number }>({ w: 80, h: 114 });
 
@@ -40,6 +64,15 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
 
   const onTapRef = useRef(onTap);
   onTapRef.current = onTap;
+
+  const onDragStartRef = useRef(onDragStart);
+  onDragStartRef.current = onDragStart;
+
+  const onSwapRef = useRef(onSwap);
+  onSwapRef.current = onSwap;
+
+  const onDragEndRef = useRef(onDragEnd);
+  onDragEndRef.current = onDragEnd;
 
   // Map cardId -> inner .fan-flip element (used for FLIP) and outer .fan-slot element (used for hit-testing)
   const flipElsRef = useRef<Map<string, HTMLElement>>(new Map());
@@ -94,10 +127,7 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
     if (!prevRects) return;
     prevRectsRef.current = null;
 
-    const reducedMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (reducedMotion) return;
+    if (prefersReducedMotion()) return;
 
     const animated: HTMLElement[] = [];
     const entries: { el: HTMLElement; prev: DOMRect }[] = [];
@@ -120,6 +150,7 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
       const dy = prev.top - next.top;
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
 
+      el.style.willChange = 'transform';
       el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
       animated.push(el);
     }
@@ -133,6 +164,15 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
       el.style.transition = 'transform 210ms cubic-bezier(0.22, 1, 0.36, 1)';
       el.style.transform = 'translate3d(0, 0, 0)';
     }
+
+    // Release temporary will-change once FLIP settles so GPU layers aren't held permanently
+    const cleanupTimer = window.setTimeout(() => {
+      for (const el of animated) {
+        el.style.willChange = 'auto';
+      }
+    }, 240);
+
+    return () => window.clearTimeout(cleanupTimer);
   }, [hand]);
 
   // Capture all card rects before a reorder
@@ -208,6 +248,7 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
   }, []);
 
   const startGhostLoop = useCallback(() => {
+    const reduced = prefersReducedMotion();
     const tick = () => {
       const p = pendingRef.current;
       const ghost = ghostRef.current;
@@ -215,10 +256,14 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
         rafRef.current = null;
         return;
       }
-      const vx = p.curX - p.lastX;
-      p.lastX = p.curX;
-      const targetTilt = Math.max(-13, Math.min(13, vx * 0.7));
-      p.tilt += (targetTilt - p.tilt) * 0.24;
+      if (reduced) {
+        p.tilt = 0;
+      } else {
+        const vx = p.curX - p.lastX;
+        p.lastX = p.curX;
+        const targetTilt = Math.max(-13, Math.min(13, vx * 0.7));
+        p.tilt += (targetTilt - p.tilt) * 0.24;
+      }
 
       if (ghost) {
         const x = p.curX - p.grabOffsetX;
@@ -276,6 +321,7 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
         draggingIdRef.current = p.card.id;
         setGhostDims({ w: p.cardWidth, h: p.cardHeight });
         setDraggingCard(p.card);
+        onDragStartRef.current?.(p.card);
         startGhostLoop();
       }
 
@@ -294,6 +340,7 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
         const [moved] = nextIds.splice(curIdx, 1);
         nextIds.splice(nextIdx, 0, moved);
         onReorderRef.current(nextIds);
+        onSwapRef.current?.();
       }
     };
 
@@ -314,14 +361,25 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
         rafRef.current = null;
       }
 
-      const ghost = ghostRef.current;
-      const targetSlot = flipElsRef.current.get(p.card.id) ?? slotElsRef.current.get(p.card.id);
+      onDragEndRef.current?.();
 
-      if (ghost && targetSlot) {
+      const ghost = ghostRef.current;
+      const slotEl = slotElsRef.current.get(p.card.id);
+      const targetSlot = flipElsRef.current.get(p.card.id) ?? slotEl;
+
+      if (ghost && targetSlot && !prefersReducedMotion()) {
         const cardEl = targetSlot.querySelector<HTMLElement>('.pcard') ?? targetSlot;
         const rect = cardEl.getBoundingClientRect();
+        // Match the exact fan slot rotation and center so there is zero snap when ghost unmounts
+        const targetAngle = slotEl ? getElementRotationDeg(slotEl) : 0;
+        const targetCenterX = rect.left + rect.width / 2;
+        const targetCenterY = rect.top + rect.height / 2;
+        const settleX = targetCenterX - p.cardWidth / 2;
+        const settleY = targetCenterY - p.cardHeight / 2;
+        const targetScale = cardEl.classList.contains('is-selected') ? 1.03 : 1;
+
         ghost.style.transition = `transform ${SETTLE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
-        ghost.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0) rotate(0deg) scale(1)`;
+        ghost.style.transform = `translate3d(${settleX}px, ${settleY}px, 0) rotate(${targetAngle.toFixed(2)}deg) scale(${targetScale})`;
         settleTimerRef.current = window.setTimeout(() => {
           settleTimerRef.current = null;
           draggingIdRef.current = null;
@@ -359,6 +417,11 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
     }
   }, [draggingCard]);
 
+  const getSlotRect = useCallback((id: string): DOMRect | null => {
+    const el = flipElsRef.current.get(id) ?? slotElsRef.current.get(id);
+    return el ? el.getBoundingClientRect() : null;
+  }, []);
+
   return {
     draggingCard,
     draggingId: draggingCard?.id ?? null,
@@ -368,5 +431,6 @@ export function useHandDrag({ hand, onReorder, onTap, resetKey }: UseHandDragOpt
     registerFlip,
     handleCardPointerDown,
     snapshotRects,
+    getSlotRect,
   };
 }

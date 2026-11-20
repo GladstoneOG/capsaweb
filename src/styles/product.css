@@ -1,0 +1,488 @@
+/* Product polish, responsive, and accessibility overrides (owned by product) */
+
+/* ==================== ACCESSIBILITY & CONTRAST ==================== */
+
+:root {
+  /* Ensure secondary/muted text meets WCAG AA (>= 4.5:1) over dark glass & felt */
+  --text-3: #96b0a4;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Bring keyboard-focused cards above neighbors in overlapping fans */
+.fan-slot:focus-within {
+  z-index: 36;
+}
+
+/* ==================== LOADING & STATUS CARD ==================== */
+
+.status-spinner {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--gold-2);
+  animation: productSpin 0.85s linear infinite;
+}
+
+@keyframes productSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==================== INVITE & LOBBY UX ==================== */
+
+.invite-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 14px;
+  background: rgba(125, 211, 252, 0.12);
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  color: #d9f3ff;
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+.invite-banner--featured {
+  justify-content: space-between;
+  padding: 10px 14px;
+}
+
+.lobbies-empty-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-feedback {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(94, 234, 212, 0.16);
+  border: 1px solid rgba(94, 234, 212, 0.4);
+  color: var(--mint);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+/* ==================== CONFIRM DIALOG ==================== */
+
+.confirm-modal {
+  max-width: 420px;
+}
+
+.eyebrow--danger {
+  color: var(--coral);
+}
+
+.confirm-actions {
+  justify-content: flex-end;
+}
+
+.btn-danger {
+  background: linear-gradient(180deg, #ff8f82 0%, #e45748 100%);
+  color: #1f0704;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 6px 18px rgba(228, 87, 72, 0.32);
+}
+
+.btn-danger:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+/* ==================== IN-GAME HUD & DOCK UX ==================== */
+
+.chip--copy {
+  cursor: pointer;
+}
+
+.chip--copy:hover {
+  background: rgba(242, 198, 109, 0.25);
+  border-color: rgba(242, 198, 109, 0.7);
+}
+
+.tool-count {
+  display: inline-block;
+  margin-left: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(242, 198, 109, 0.18);
+  color: var(--gold-2);
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.done-dock-note {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(94, 234, 212, 0.12);
+  border: 1px solid rgba(94, 234, 212, 0.36);
+  color: var(--mint);
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.done-dock-note strong {
+  color: #ffffff;
+}
+
+/* ==================== SAFE AREAS & MOBILE TRADE GRID ==================== */
+
+.hud {
+  padding-top: max(clamp(10px, 1.2vh, 18px), env(safe-area-inset-top));
+  padding-left: max(clamp(14px, 1.8vw, 28px), env(safe-area-inset-left));
+  padding-right: max(clamp(14px, 1.8vw, 28px), env(safe-area-inset-right));
+}
+
+.dock {
+  padding-bottom: max(clamp(12px, 1.5vh, 20px), env(safe-area-inset-bottom));
+  padding-left: max(18px, env(safe-area-inset-left));
+  padding-right: max(18px, env(safe-area-inset-right));
+}
+
+.drawer {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (max-width: 560px) {
+  .trade-board {
+    gap: 10px;
+  }
+
+  .trade-row {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .trade-cell {
+    min-height: 40px;
+    padding: 6px 2px;
+    font-size: 0.8rem;
+  }
+}
+
+/* ==================== MOBILE LANDSCAPE / SHORT VIEWPORTS ==================== */
+
+@media (max-height: 540px) {
+  .hud {
+    padding: max(4px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 2px max(12px, env(safe-area-inset-left));
+  }
+
+  .chip {
+    padding: 3px 9px;
+    font-size: 0.72rem;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .stage {
+    padding: 2px max(12px, env(safe-area-inset-right)) 2px max(12px, env(safe-area-inset-left));
+    overflow: hidden;
+  }
+
+  /* Use 3-column side-seat layout even below 860px wide so vertical space goes to the table */
+  .table-cluster {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    row-gap: 4px;
+    column-gap: 10px;
+    align-items: center;
+  }
+
+  .seat--top {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 2px 10px 2px 4px;
+    gap: 7px;
+  }
+
+  .seat--left,
+  .seat--right {
+    grid-row: 1 / span 2;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-radius: 14px;
+    background: var(--glass);
+    border: 1px solid var(--line-2);
+    min-width: 86px;
+    max-width: 118px;
+    justify-self: center;
+  }
+
+  .seat--left {
+    grid-column: 1;
+  }
+
+  .seat--right {
+    grid-column: 3;
+  }
+
+  .seat--left .seat-info,
+  .seat--right .seat-info {
+    align-items: center;
+    text-align: center;
+    gap: 2px;
+  }
+
+  .seat--left .seat-stats,
+  .seat--right .seat-stats {
+    justify-content: center;
+  }
+
+  .seat-name {
+    font-size: 0.76rem;
+    max-width: 96px;
+  }
+
+  .seat-avatar .avatar--md {
+    width: 34px;
+    height: 34px;
+  }
+
+  .seat--top .seat-avatar .avatar--md {
+    width: 30px;
+    height: 30px;
+  }
+
+  .seat-score,
+  .seat-count {
+    padding: 1px 6px;
+    font-size: 0.68rem;
+  }
+
+  .seat-score strong,
+  .seat-count strong {
+    font-size: 0.76rem;
+  }
+
+  .seat--left .seat-fan,
+  .seat--right .seat-fan,
+  .seat--top .seat-fan {
+    display: none;
+  }
+
+  .table-rim {
+    grid-column: 2;
+    grid-row: 2;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    padding: 7px;
+    border-radius: 999px;
+  }
+
+  .table-felt {
+    padding: 5px 18px;
+    gap: 3px;
+    border-radius: 999px;
+  }
+
+  .table-felt::before {
+    inset: 6px;
+    border-radius: 999px;
+  }
+
+  .felt-crest {
+    width: 92px;
+  }
+
+  .trick .pcard--lg {
+    width: clamp(37px, 10.6vh, 58px);
+    height: calc(clamp(37px, 10.6vh, 58px) * 1.425);
+    padding: 3px 4px;
+    border-radius: 7px;
+  }
+
+  .trick-card {
+    margin-left: -14px;
+  }
+
+  .combo-tag {
+    padding: 2px 10px;
+    font-size: 0.72rem;
+    gap: 4px;
+  }
+
+  .felt-notes {
+    bottom: 6px;
+  }
+
+  .dock {
+    gap: 3px;
+    padding: 0 max(10px, env(safe-area-inset-right)) max(5px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+
+  .sel-slot {
+    min-height: 24px;
+  }
+
+  .sel-chip {
+    padding: 3px 10px;
+    font-size: 0.72rem;
+  }
+
+  .sel-chip.is-your-turn,
+  .sel-chip.is-no-plays {
+    padding: 3px 12px;
+    font-size: 0.76rem;
+  }
+
+  .hand {
+    padding-top: 8px;
+    padding-bottom: 2px;
+    --card-w: clamp(42px, 11vh, 52px);
+    --card-h: calc(var(--card-w) * 1.425);
+  }
+
+  .hand.is-two-rows {
+    padding-top: 6px;
+    padding-bottom: 2px;
+    --card-w: 38px;
+    --card-h: 54px;
+  }
+
+  .fan-slot {
+    margin-left: clamp(
+      -26px,
+      calc((78vw - var(--card-w)) / var(--gaps, 12) - var(--card-w)),
+      -6px
+    );
+    transform: rotate(calc(var(--off, 0) * var(--spread, 2deg) * 0.28));
+  }
+
+  .hand.is-two-rows .fan-slot {
+    transform: rotate(calc(var(--off, 0) * var(--spread, 2deg) * 0.22));
+  }
+
+  .pcard.is-interactive:hover {
+    transform: translateY(-6px);
+  }
+
+  .pcard.is-selected {
+    transform: translateY(-12px) scale(1.02);
+  }
+
+  .pcard.is-selected:hover {
+    transform: translateY(-14px) scale(1.02);
+  }
+
+  .pcard-pips {
+    display: none;
+  }
+
+  .pcard-pip--mobile-fallback {
+    display: block;
+  }
+
+  .pcard {
+    padding: 3px 4px;
+  }
+
+  .pcard-frame {
+    inset: 3px;
+  }
+
+  .pcard-rank {
+    font-size: 0.76rem;
+  }
+
+  .pcard-rank.is-ten {
+    font-size: 0.68rem;
+    letter-spacing: -0.1em;
+  }
+
+  .pcard-idx svg {
+    width: 9px;
+    height: 9px;
+  }
+
+  .pcard-pip {
+    width: 19px;
+    height: 19px;
+  }
+
+  .pcard-pip.is-big {
+    width: 23px;
+    height: 23px;
+  }
+
+  .pcard-ace-emblem {
+    width: 28px;
+    height: 28px;
+  }
+
+  .hand.is-two-rows .pcard-rank {
+    font-size: 0.68rem;
+  }
+
+  .hand.is-two-rows .pcard-pip {
+    width: 16px;
+    height: 16px;
+  }
+
+  .dock-bar {
+    padding: 4px 10px;
+    border-radius: 14px;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .me .avatar--sm {
+    width: 30px;
+    height: 30px;
+  }
+
+  .tools {
+    width: auto;
+    border-top: none;
+    padding-top: 0;
+  }
+
+  .tool-btn {
+    padding: 5px 9px;
+    font-size: 0.74rem;
+  }
+
+  .act-btn {
+    padding: 6px 13px;
+    font-size: 0.8rem;
+  }
+
+  .act-btn--play {
+    min-width: 68px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-spinner {
+    animation: none;
+    border-top-color: var(--gold-2);
+    border-right-color: var(--gold-2);
+  }
+}

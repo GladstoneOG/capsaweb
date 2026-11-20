@@ -38,6 +38,8 @@ export function App() {
   const [homeError, setHomeError] = useState<string | null>(null);
   const [initialRoomCode] = useState(getInitialRoomCode);
   const [savedName, setSavedName] = useState(getInitialName);
+  const [joiningCode, setJoiningCode] = useState<string | null>(null);
+  const [connectStalled, setConnectStalled] = useState(false);
 
   useEffect(() => {
     if (!session) {
@@ -67,6 +69,8 @@ export function App() {
       return null;
     });
     setSnapshot(null);
+    setJoiningCode(null);
+    setConnectStalled(false);
     setHomeError(null);
     try {
       const url = new URL(window.location.href);
@@ -86,6 +90,7 @@ export function App() {
     try {
       const code = await createRoomCode(name, password);
       const hostSession = new HostMultiplayerSession(code, name);
+      setJoiningCode(code);
       setSession(hostSession);
     } catch (err) {
       setHomeError(err instanceof Error ? err.message : 'Unable to create room.');
@@ -99,12 +104,14 @@ export function App() {
     setHomeError(null);
     const cleanCode = code.toUpperCase();
     const peerSession = new PeerMultiplayerSession(cleanCode, name, password);
+    setJoiningCode(cleanCode);
     setSession(peerSession);
   };
 
   const handleSolo = (name: string) => {
     persistName(name);
     setHomeError(null);
+    setJoiningCode(null);
     setSession(new LocalSoloSession(name));
   };
 
@@ -127,9 +134,37 @@ export function App() {
       session?.destroy();
       setSession(null);
       setSnapshot(null);
+      setJoiningCode(null);
       setHomeError(msg);
     }
   }, [fatalBeforeRoom, snapshot?.error, session]);
+
+  const isConnectingToRoom = Boolean(session && snapshot && !snapshot.room);
+  useEffect(() => {
+    if (!isConnectingToRoom) {
+      setConnectStalled(false);
+      return;
+    }
+    const id = window.setTimeout(() => setConnectStalled(true), 6000);
+    return () => window.clearTimeout(id);
+  }, [isConnectingToRoom]);
+
+  // Warn multiplayer host before closing/refreshing tab mid-game
+  const hasActiveHumanPeers = Boolean(
+    session?.mode === 'host' &&
+      snapshot?.room &&
+      snapshot.room.gameState !== 'lobby' &&
+      snapshot.room.players.some((p) => !p.isHost && !p.isBot && !p.disconnected)
+  );
+  useEffect(() => {
+    if (!hasActiveHumanPeers) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [hasActiveHumanPeers]);
 
   return (
     <div className="app-bg">
@@ -145,10 +180,15 @@ export function App() {
         />
       ) : !snapshot.room ? (
         <div className="screen">
-          <div className="status-card">
-            <div className="eyebrow">Linking up</div>
+          <div className="status-card" role="status" aria-live="polite">
+            <div className="status-spinner" aria-hidden="true" />
+            <div className="eyebrow">{joiningCode ? `Table ${joiningCode}` : 'Joining table'}</div>
             <h2 className="modal-title">Connecting to table…</h2>
-            <p className="modal-sub">Negotiating a peer connection with the host.</p>
+            <p className="modal-sub">
+              {connectStalled
+                ? 'Taking longer than usual — check that the host still has this table open.'
+                : 'Setting up your seat at the table.'}
+            </p>
             <button type="button" className="btn btn-ghost" onClick={leaveSession}>
               Cancel
             </button>
