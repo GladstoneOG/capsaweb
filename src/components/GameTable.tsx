@@ -3,8 +3,10 @@ import {
   ArrowLeftRight,
   ArrowUpDown,
   Bot,
+  Clock,
   Crown,
   Flame,
+  Layers,
   Lightbulb,
   LogOut,
   MessageCircle,
@@ -143,8 +145,12 @@ function Seat({
         {player.finishRank ? (
           <span className={`medal medal--${player.finishRank}`}>{player.finishRank}</span>
         ) : (
-          <span className={`seat-count${player.cardCount <= 2 ? ' is-low' : ''}`}>
-            {player.cardCount}
+          <span
+            className={`seat-count${player.cardCount <= 2 ? ' is-low' : ''}`}
+            title={`${player.cardCount} cards left`}
+          >
+            <Layers size={11} className="seat-count-ico" />
+            <span>{player.cardCount}</span>
           </span>
         )}
         {inGrace && player.reconnectGraceUntil ? (
@@ -169,7 +175,9 @@ function Seat({
           {player.isHost && <Crown size={12} className="seat-crown" />}
           <span>{player.name}</span>
         </div>
-        <div className="seat-score">{player.score} pts</div>
+        <div className="seat-score">
+          <strong>{player.score}</strong> pts
+        </div>
       </div>
 
       {!player.finishRank && fanCount > 0 && (
@@ -223,6 +231,9 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const [seenActivityCount, setSeenActivityCount] = useState(room.activity.length);
   const [tradePickerOpen, setTradePickerOpen] = useState(false);
   const [afkConfirmOpen, setAfkConfirmOpen] = useState(false);
+  const [isPassQueued, setIsPassQueued] = useState(false);
+  const [turnFlashKey, setTurnFlashKey] = useState(0);
+  const [turnNudged, setTurnNudged] = useState(false);
   const [scoreboardVisible, setScoreboardVisible] = useState(
     () => room.gameState === 'roundover' || room.gameState === 'gameover'
   );
@@ -384,13 +395,37 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     }
   }, [room.lastTrick, room.viewerId]);
 
-  // ---------- Sound cues & delayed scoreboard so the closing play is clearly visible ----------
-  const prevTurnRef = useRef(false);
+  // ---------- Sound cues, turn alerts, tab title & delayed scoreboard ----------
+  const prevCanActRef = useRef(false);
   const prevGameStateRef = useRef(room.gameState);
   useEffect(() => {
-    if (isMyTurn && !prevTurnRef.current) sfx.yourTurn();
-    prevTurnRef.current = isMyTurn;
-  }, [isMyTurn]);
+    if (canAct && !prevCanActRef.current && !isPassQueued) {
+      sfx.yourTurn();
+      setTurnFlashKey((k) => k + 1);
+    }
+    prevCanActRef.current = canAct;
+  }, [canAct, isPassQueued]);
+
+  // Gentle reminder chime + extra pulse if idle for 8s on your turn
+  useEffect(() => {
+    if (!canAct || isPassQueued) {
+      setTurnNudged(false);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      setTurnNudged(true);
+      sfx.turnNudge();
+    }, 8000);
+    return () => window.clearTimeout(id);
+  }, [canAct, isPassQueued, room.turnIndex, room.activePlay, room.roundNumber]);
+
+  // Browser tab title alert so tabbed-out players notice their turn
+  useEffect(() => {
+    document.title = canAct ? '★ YOUR TURN — Capsa Banting' : 'Capsa Banting';
+    return () => {
+      document.title = 'Capsa Banting';
+    };
+  }, [canAct]);
 
   useEffect(() => {
     const isEnd = room.gameState === 'roundover' || room.gameState === 'gameover';
@@ -482,15 +517,54 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   }, [customOrder, snapshotRects]);
 
   const canPass = canAct && Boolean(room.activePlay) && !isFirstPlayOfRound;
+  const canQueuePass =
+    room.gameState === 'playing' &&
+    !diceActive &&
+    !isMyTurn &&
+    !isAfk &&
+    !me?.finishRank &&
+    !me?.passed &&
+    !room.canUndoPass &&
+    Boolean(room.activePlay);
+
+  // Clear queued pass whenever trick resets, round changes, or player is no longer eligible
+  useEffect(() => {
+    if (
+      room.gameState !== 'playing' ||
+      diceActive ||
+      !room.activePlay ||
+      isAfk ||
+      Boolean(me?.finishRank) ||
+      Boolean(me?.passed)
+    ) {
+      setIsPassQueued(false);
+    }
+  }, [room.gameState, room.roundNumber, diceActive, room.activePlay, isAfk, me?.finishRank, me?.passed]);
+
+  // Auto-fire queued pass as soon as your turn begins on an active trick
+  useEffect(() => {
+    if (!isPassQueued || !canAct) return;
+    if (Boolean(room.activePlay) && !isFirstPlayOfRound) {
+      setIsPassQueued(false);
+      setSelectedIds([]);
+      sfx.pass();
+      onIntent({ type: 'PASS' });
+    } else {
+      // Fresh lead — cancel queued pass instead of passing
+      setIsPassQueued(false);
+    }
+  }, [isPassQueued, canAct, room.activePlay, isFirstPlayOfRound, onIntent]);
 
   const handlePlay = useCallback(() => {
     if (!canAct || !selectionEval.valid) return;
+    setIsPassQueued(false);
     onIntent({ type: 'PLAY_CARDS', cardIds: selectedIds });
     setSelectedIds([]);
   }, [canAct, selectionEval.valid, onIntent, selectedIds]);
 
   const handlePass = useCallback(() => {
     if (!canPass) return;
+    setIsPassQueued(false);
     sfx.pass();
     onIntent({ type: 'PASS' });
     setSelectedIds([]);
@@ -540,10 +614,11 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
         e.preventDefault();
         handlePlay();
       } else if (k === 'p' || e.key === 'Backspace') {
-        if (!isAfk && (canPass || room.canUndoPass)) {
+        if (!isAfk && (canPass || room.canUndoPass || canQueuePass)) {
           e.preventDefault();
           if (canPass) handlePass();
           else if (room.canUndoPass) handleUndoPass();
+          else if (canQueuePass) setIsPassQueued((prev) => !prev);
         }
       } else if (k === 'h' && canAct) {
         e.preventDefault();
@@ -565,6 +640,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     isAfk,
     canAct,
     canPass,
+    canQueuePass,
     selectionEval.valid,
     handlePlay,
     handlePass,
@@ -645,7 +721,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
 
   return (
     <div
-      className={`table-shell${canAct ? ' is-my-turn' : ''}`}
+      className={`table-shell${canAct ? ' is-my-turn' : ''}${turnNudged ? ' is-turn-nudged' : ''}`}
       onContextMenu={handleRightClick}
     >
       {midRoundConfettiKey > 0 && room.gameState === 'playing' && (
@@ -728,6 +804,12 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               <div className="felt-mark" aria-hidden="true">
                 <span>CAPSA</span>
               </div>
+
+              {turnFlashKey > 0 && canAct && (
+                <div key={`turn_${turnFlashKey}`} className="turn-flash" aria-hidden="true">
+                  <span>{!room.activePlay ? 'YOUR LEAD!' : 'YOUR TURN!'}</span>
+                </div>
+              )}
 
               {isBomb && playKey && <span key={`wave_${playKey}`} className="shockwave" aria-hidden="true" />}
 
@@ -896,18 +978,36 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               <SkipForward size={15} />
               <span>Nothing beats that — press Pass</span>
             </button>
-          ) : (
-            selectionEval.label && (
-              <div className={`sel-chip ${selectionEval.valid ? 'is-valid' : 'is-invalid'}`}>
-                <span>{selectionEval.label}</span>
-                {selectedIds.length > 0 && (
-                  <button type="button" aria-label="Clear selection" onClick={() => setSelectedIds([])}>
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-            )
-          )}
+          ) : selectionEval.label ? (
+            <div className={`sel-chip ${selectionEval.valid ? 'is-valid' : 'is-invalid'}`}>
+              <span>{selectionEval.label}</span>
+              {selectedIds.length > 0 && (
+                <button type="button" aria-label="Clear selection" onClick={() => setSelectedIds([])}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          ) : isPassQueued ? (
+            <button
+              type="button"
+              className="sel-chip is-queued-chip"
+              onClick={() => setIsPassQueued(false)}
+            >
+              <Clock size={14} />
+              <span>Pass queued — click or Backspace to cancel</span>
+            </button>
+          ) : canAct ? (
+            <div className={`sel-chip is-your-turn${turnNudged ? ' is-nudged' : ''}`}>
+              <span className="turn-dot" aria-hidden="true" />
+              <span>
+                {isFirstPlayOfRound
+                  ? `YOUR TURN · Start with ${room.startingCard ? cardToString(room.startingCard) : '3♦'}`
+                  : !room.activePlay
+                    ? 'YOUR TURN · Lead any combo'
+                    : 'YOUR TURN · Play or Pass'}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         <div
@@ -1011,13 +1111,21 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
                 )}
                 {me?.passed && !me.finishRank && <span className="soft-pill">Passed</span>}
               </div>
-              <div className="me-sub">
-                {me?.score ?? 0} pts · {rawHand.length} cards
+              <div className="me-stats">
+                <span className="stat-pill stat-pill--pts">
+                  <strong>{me?.score ?? 0}</strong> pts
+                </span>
+                <span
+                  className={`stat-pill stat-pill--cards${rawHand.length <= 2 && rawHand.length > 0 ? ' is-low' : ''}`}
+                >
+                  <Layers size={12} />
+                  <strong>{rawHand.length}</strong>
+                  <span className="hide-sm">{rawHand.length === 1 ? 'card' : 'cards'}</span>
+                </span>
                 {isMyTurn && timerData && (
-                  <>
-                    {' · '}
+                  <span className="stat-pill stat-pill--timer">
                     <CountdownText deadline={timerData.deadline} offset={timerData.offset} />
-                  </>
+                  </span>
                 )}
               </div>
             </div>
@@ -1074,6 +1182,20 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               >
                 <RotateCcw size={15} />
                 Undo
+              </button>
+            ) : canQueuePass ? (
+              <button
+                type="button"
+                className={`act-btn ${isPassQueued ? 'act-btn--queued' : 'act-btn--queue'}`}
+                title={
+                  isPassQueued
+                    ? 'Cancel queued pass (P / Backspace)'
+                    : 'Pre-fire pass when your turn arrives (P / Backspace)'
+                }
+                onClick={() => setIsPassQueued((prev) => !prev)}
+              >
+                <Clock size={15} />
+                {isPassQueued ? 'Queued' : 'Queue Pass'}
               </button>
             ) : (
               <button

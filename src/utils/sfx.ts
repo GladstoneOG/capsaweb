@@ -79,8 +79,14 @@ class SoundFX {
   }
 
   yourTurn(): void {
-    this.tone(587.33, 0.1, 'sine', 0.055);
-    this.tone(880, 0.14, 'sine', 0.055, 0.07);
+    this.tone(587.33, 0.12, 'triangle', 0.095, 0);
+    this.tone(880, 0.18, 'triangle', 0.1, 0.08);
+    this.tone(1174.66, 0.22, 'sine', 0.055, 0.14);
+  }
+
+  turnNudge(): void {
+    this.tone(783.99, 0.09, 'sine', 0.075, 0);
+    this.tone(1046.5, 0.14, 'sine', 0.08, 0.09);
   }
 
   roundWin(): void {
