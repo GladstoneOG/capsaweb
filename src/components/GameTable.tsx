@@ -10,6 +10,7 @@ import {
   MessageCircle,
   RotateCcw,
   Rows2,
+  SkipForward,
   Smartphone,
   Sparkles,
   Trophy,
@@ -49,6 +50,13 @@ const TOSS_FROM: Record<SeatPos, { fx: string; fy: string }> = {
   left: { fx: '-320px', fy: '-20px' },
   top: { fx: '0px', fy: '-220px' },
   right: { fx: '320px', fy: '-20px' },
+};
+
+const SEAT_ANGLES: Record<SeatPos, number> = {
+  top: 0,
+  right: 90,
+  bottom: 180,
+  left: 270,
 };
 
 const SPLASH: Partial<Record<ComboType, string>> = {
@@ -599,7 +607,28 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
 
   const unreadCount = Math.max(0, room.activity.length - seenActivityCount);
   const noPlays = isMyTurn && !isFirstPlayOfRound && room.activePlay && eligiblePlays.length === 0;
+  const mustPass = Boolean(noPlays && !isAfk);
   const leaderName = currentPlayer?.id === room.viewerId ? 'You' : currentPlayer?.name;
+
+  // Smoothly rotating clockwise spotlight angle pointing at the active player's side of the table
+  const activeSeat: SeatPos | null =
+    room.gameState === 'playing' && !diceActive && currentPlayer
+      ? seatOf(currentPlayer.id)
+      : null;
+  const [turnAngle, setTurnAngle] = useState<number>(() =>
+    activeSeat ? SEAT_ANGLES[activeSeat] : 180
+  );
+  useEffect(() => {
+    if (!activeSeat) return;
+    const target = SEAT_ANGLES[activeSeat];
+    setTurnAngle((prev) => {
+      const mod = ((prev % 360) + 360) % 360;
+      let delta = target - mod;
+      if (delta < 0) delta += 360;
+      if (delta === 270) delta = -90; // smooth reverse on Undo Pass
+      return prev + delta;
+    });
+  }, [activeSeat]);
 
   const handleRightClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -615,7 +644,10 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   );
 
   return (
-    <div className="table-shell" onContextMenu={handleRightClick}>
+    <div
+      className={`table-shell${canAct ? ' is-my-turn' : ''}`}
+      onContextMenu={handleRightClick}
+    >
       {midRoundConfettiKey > 0 && room.gameState === 'playing' && (
         <Confetti key={midRoundConfettiKey} count={75} duration={2100} />
       )}
@@ -683,6 +715,16 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
             className={`table-rim${bombShakeKey > 0 ? ' is-shaking' : ''}`}
           >
             <div className="table-felt" aria-live="polite">
+              {activeSeat && (
+                <div
+                  className={`turn-beacon${activeSeat === 'bottom' ? ' is-self' : ''}`}
+                  style={{ '--turn-deg': `${turnAngle}deg` } as CSSProperties}
+                  aria-hidden="true"
+                >
+                  <span className="turn-beacon-beam" />
+                </div>
+              )}
+
               <div className="felt-mark" aria-hidden="true">
                 <span>CAPSA</span>
               </div>
@@ -845,14 +887,19 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               <Bot size={13} />
               <span>AFK bot active — click here or your avatar to resume</span>
             </button>
+          ) : mustPass && !selectionEval.label ? (
+            <button
+              type="button"
+              className="sel-chip is-no-plays"
+              onClick={handlePass}
+            >
+              <SkipForward size={15} />
+              <span>Nothing beats that — press Pass</span>
+            </button>
           ) : (
-            (selectionEval.label || noPlays) && (
-              <div
-                className={`sel-chip ${
-                  selectionEval.label ? (selectionEval.valid ? 'is-valid' : 'is-invalid') : 'is-info'
-                }`}
-              >
-                <span>{selectionEval.label ?? 'Nothing beats that — pass?'}</span>
+            selectionEval.label && (
+              <div className={`sel-chip ${selectionEval.valid ? 'is-valid' : 'is-invalid'}`}>
+                <span>{selectionEval.label}</span>
                 {selectedIds.length > 0 && (
                   <button type="button" aria-label="Clear selection" onClick={() => setSelectedIds([])}>
                     <X size={12} />
@@ -864,7 +911,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
         </div>
 
         <div
-          className={`hand${useTwoRows ? ' is-two-rows' : ''}${isDealing ? ' is-dealing' : ''}${draggingId ? ' is-dragging' : ''}`}
+          className={`hand${useTwoRows ? ' is-two-rows' : ''}${isDealing ? ' is-dealing' : ''}${draggingId ? ' is-dragging' : ''}${mustPass ? ' is-no-plays' : ''}`}
           key={`round_${room.roundNumber}`}
         >
           {handRows.map((row, rowIdx) => {
@@ -1031,11 +1078,12 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
             ) : (
               <button
                 type="button"
-                className="act-btn act-btn--ghost"
+                className={`act-btn ${mustPass ? 'act-btn--pass-alert' : 'act-btn--ghost'}`}
                 title="Pass (P / Backspace)"
                 disabled={!canPass}
                 onClick={handlePass}
               >
+                {mustPass && <SkipForward size={15} />}
                 Pass
               </button>
             )}
