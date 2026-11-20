@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowLeftRight,
   ArrowUpDown,
@@ -345,7 +345,6 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const feltRef = useRef<HTMLDivElement | null>(null);
   const selChipRef = useRef<HTMLDivElement | null>(null);
   const seatElsRef = useRef<Map<string, HTMLElement>>(new Map());
-  const playedCardRectsRef = useRef<Map<string, DOMRect>>(new Map());
   const burstIdRef = useRef(0);
 
   const registerSeatEl = useCallback((id: string, el: HTMLElement | null) => {
@@ -438,52 +437,18 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     setHintIdx(0);
   }, [rawHand, room.activePlay, room.turnIndex]);
 
-  // ---------- Played pile + Real-coordinate flight + Tiered Combo Juice ----------
+  // ---------- Played pile + Tiered Combo Juice ----------
   const playKey = room.activePlay
     ? `${room.lastPlayerPlayedId}:${room.activePlay.cards.map((c) => c.id).join(',')}`
     : null;
   const [underPlay, setUnderPlay] = useState<{ key: string; cards: Card[] } | null>(null);
-  const [cardTossMap, setCardTossMap] = useState<Record<string, { fx: string; fy: string }>>({});
-  const lastLayoutPlayRef = useRef<{ key: string | null; cards: Card[] | null }>({ key: null, cards: null });
-  const lastAudioPlayKeyRef = useRef<string | null>(null);
-
-  // Measure real card/seat origins BEFORE browser paint so frame 0 of tossSlam never jumps
-  useLayoutEffect(() => {
-    const prev = lastLayoutPlayRef.current;
-    if (playKey === prev.key) return;
-    setUnderPlay(playKey && prev.key && prev.cards ? { key: prev.key, cards: prev.cards } : null);
-    lastLayoutPlayRef.current = { key: playKey, cards: room.activePlay ? room.activePlay.cards : null };
-
-    if (!playKey || !room.activePlay) {
-      setCardTossMap({});
-      return;
-    }
-
-    const feltRect = feltRef.current?.getBoundingClientRect();
-    const nextMap: Record<string, { fx: string; fy: string }> = {};
-    if (feltRect) {
-      const feltCx = feltRect.left + feltRect.width / 2;
-      const feltCy = feltRect.top + feltRect.height / 2;
-      const playedByMe = room.lastPlayerPlayedId === room.viewerId;
-      const seatEl = room.lastPlayerPlayedId ? seatElsRef.current.get(room.lastPlayerPlayedId) : null;
-      const seatRect = !playedByMe && seatEl ? seatEl.getBoundingClientRect() : null;
-
-      for (const card of room.activePlay.cards) {
-        const srcRect = playedByMe ? playedCardRectsRef.current.get(card.id) : seatRect;
-        if (srcRect) {
-          const dx = Math.round(srcRect.left + srcRect.width / 2 - feltCx);
-          const dy = Math.round(srcRect.top + srcRect.height / 2 - feltCy);
-          nextMap[card.id] = { fx: `${dx}px`, fy: `${dy}px` };
-        }
-      }
-    }
-    playedCardRectsRef.current.clear();
-    setCardTossMap(nextMap);
-  }, [playKey, room.activePlay, room.lastPlayerPlayedId, room.viewerId]);
+  const lastPlayRef = useRef<{ key: string | null; cards: Card[] | null }>({ key: null, cards: null });
 
   useEffect(() => {
-    if (playKey === lastAudioPlayKeyRef.current) return;
-    lastAudioPlayKeyRef.current = playKey;
+    const prev = lastPlayRef.current;
+    if (playKey === prev.key) return;
+    setUnderPlay(playKey && prev.key && prev.cards ? { key: prev.key, cards: prev.cards } : null);
+    lastPlayRef.current = { key: playKey, cards: room.activePlay ? room.activePlay.cards : null };
     if (!playKey || !room.activePlay) return;
 
     const feltRect = feltRef.current?.getBoundingClientRect();
@@ -862,7 +827,6 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     registerFlip,
     handleCardPointerDown,
     snapshotRects,
-    getSlotRect,
   } = useHandDrag({
     hand: sortedHand,
     onReorder: (nextIds) => setCustomOrder(nextIds),
@@ -933,17 +897,10 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
 
   const handlePlay = useCallback(() => {
     if (!canAct || !selectionEval.valid) return;
-    // Snapshot exact hand-card rects before unmount so played cards fly from real hand positions
-    const rects = new Map<string, DOMRect>();
-    for (const id of selectedIds) {
-      const r = getSlotRect(id);
-      if (r) rects.set(id, r);
-    }
-    playedCardRectsRef.current = rects;
     setIsPassQueued(false);
     onIntent({ type: 'PLAY_CARDS', cardIds: selectedIds });
     setSelectedIds([]);
-  }, [canAct, selectionEval.valid, onIntent, selectedIds, getSlotRect]);
+  }, [canAct, selectionEval.valid, onIntent, selectedIds]);
 
   const handlePass = useCallback(() => {
     if (!canPass) return;
@@ -1181,7 +1138,6 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     return '';
   }, [visibleError, canAct, isFirstPlayOfRound, room.activePlay, room.viewerId, lastPlayedPlayer]);
 
-  const isFiveCardPlay = (room.activePlay?.cards.length ?? 0) === 5;
   const isFlushRed =
     activeType === 'flush' &&
     (room.activePlay?.cards[0]?.suit === 'H' || room.activePlay?.cards[0]?.suit === 'D');
@@ -1414,13 +1370,9 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
 
               {room.activePlay ? (
                 <>
-                  <div
-                    key={playKey}
-                    className={`trick${isBomb ? ' is-bomb' : ''}${isFiveCardPlay ? ' is-heavy' : ''}`}
-                  >
+                  <div key={playKey} className={`trick${isBomb ? ' is-bomb' : ''}`}>
                     {room.activePlay.cards.map((card, i) => {
                       const t = tiltFor(card.id);
-                      const cardToss = cardTossMap[card.id] ?? toss;
                       const isBigTwo = card.rank === '2' && card.suit === 'S';
                       return (
                         <div
@@ -1430,8 +1382,8 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
                             {
                               '--rot': `${t.rot}deg`,
                               '--dy': `${t.dy}px`,
-                              '--fx': cardToss.fx,
-                              '--fy': cardToss.fy,
+                              '--fx': toss.fx,
+                              '--fy': toss.fy,
                               '--i': i,
                             } as CSSProperties
                           }

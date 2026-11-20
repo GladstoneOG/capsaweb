@@ -417,11 +417,6 @@ export function useHandDrag({
     }
   }, [draggingCard]);
 
-  const getSlotRect = useCallback((id: string): DOMRect | null => {
-    const el = flipElsRef.current.get(id) ?? slotElsRef.current.get(id);
-    return el ? el.getBoundingClientRect() : null;
-  }, []);
-
   return {
     draggingCard,
     draggingId: draggingCard?.id ?? null,
@@ -431,6 +426,5 @@ export function useHandDrag({
     registerFlip,
     handleCardPointerDown,
     snapshotRects,
-    getSlotRect,
   };
 }
