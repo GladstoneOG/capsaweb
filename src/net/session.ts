@@ -1,14 +1,12 @@
 import { evaluateBotTradeFulfill, evaluateBotTradeRequest, getBotPlay } from '@engine/bot';
 import { CapsaHostEngine } from '@engine/hostEngine';
 import type { ClientIntent, SanitizedRoomState } from '@engine/types';
-import {
-  RTC_CONFIG,
-  type ConnectionStatus,
-  type HostToPeerMessage,
-  type LobbyListing,
-  type LocalTransportState,
-  type PeerToHostMessage,
-  type SignalServerMessage,
+import type {
+  ClientToRoomMessage,
+  ConnectionStatus,
+  LobbyListing,
+  LocalTransportState,
+  RoomToClientMessage,
 } from './protocol';
 
 export type { LobbyListing };
@@ -23,11 +21,48 @@ export interface SessionSnapshot {
 export type SessionListener = (snapshot: SessionSnapshot) => void;
 
 export interface GameSession {
-  readonly mode: 'solo' | 'host' | 'peer';
+  readonly mode: 'solo' | 'multiplayer';
   subscribe(listener: SessionListener): () => void;
   getSnapshot(): SessionSnapshot;
   sendIntent(intent: ClientIntent): void;
   destroy(): void;
+}
+
+export interface ActiveRoomBookmark {
+  code: string;
+  name: string;
+}
+
+const ACTIVE_ROOM_KEY = 'capsa_active_room';
+
+export function saveActiveRoom(bookmark: ActiveRoomBookmark): void {
+  try {
+    sessionStorage.setItem(ACTIVE_ROOM_KEY, JSON.stringify(bookmark));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function loadActiveRoom(): ActiveRoomBookmark | null {
+  try {
+    const raw = sessionStorage.getItem(ACTIVE_ROOM_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ActiveRoomBookmark>;
+    if (typeof parsed.code === 'string' && parsed.code.length === 4 && typeof parsed.name === 'string') {
+      return { code: parsed.code.toUpperCase(), name: parsed.name };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearActiveRoom(): void {
+  try {
+    sessionStorage.removeItem(ACTIVE_ROOM_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 function getOrCreateSessionId(roomCode: string): string {
@@ -52,13 +87,12 @@ function buildWsUrl(params: Record<string, string>, roomCode: string): string {
   return `${proto}//${window.location.host}/api/room/${roomCode.toUpperCase()}/ws?${query}`;
 }
 
-// ==================== SHARED HOST SCHEDULER (BOTS + TURN TIMER) ====================
+// ==================== SOLO AUTOMATION (OFFLINE VS BOTS) ====================
 
-class HostAutomation {
+class SoloAutomation {
   private botTimer: number | null = null;
   private diceTimer: number | null = null;
   private turnTimer: number | null = null;
-  private graceTimer: number | null = null;
   private botTradeAttemptedKey: string | null = null;
 
   constructor(
@@ -70,26 +104,11 @@ class HostAutomation {
     this.clearTimers();
     const state = this.engine.getState();
 
-    // 0. Schedule grace-period expiration for any disconnected human awaiting rejoin/device swap
-    const graceDeadlines = state.players
-      .filter((p) => p.disconnected && !p.isBot && typeof p.reconnectGraceUntil === 'number')
-      .map((p) => p.reconnectGraceUntil!);
-    if (graceDeadlines.length > 0) {
-      const earliest = Math.min(...graceDeadlines);
-      const delay = Math.max(50, earliest - Date.now());
-      this.graceTimer = window.setTimeout(() => {
-        if (this.engine.expireReconnectGrace()) {
-          this.onStateChanged();
-        }
-      }, delay);
-    }
-
     if (state.gameState !== 'playing') {
       this.botTradeAttemptedKey = null;
       return;
     }
 
-    // Auto-dismiss Dice Duel after 4.2s if nobody dismissed it
     if (state.diceShowdown) {
       this.diceTimer = window.setTimeout(() => {
         if (this.engine.getState().diceShowdown) {
@@ -100,14 +119,9 @@ class HostAutomation {
       return;
     }
 
-    // 1. Check if a bot (or AFK human) is the target of a pending trade request
     const pendingTrade = state.tradingState?.pendingRequest;
     if (pendingTrade && pendingTrade.targetPlayerId) {
       const target = state.players.find((p) => p.id === pendingTrade.targetPlayerId);
-      if (target?.disconnected && !target.isBot && target.reconnectGraceUntil) {
-        // Hold trade response during grace period
-        return;
-      }
       if (target && (target.isBot || target.autoPlay)) {
         this.botTimer = window.setTimeout(() => {
           const decision = evaluateBotTradeFulfill(target.cards, pendingTrade.requestedCard);
@@ -122,22 +136,16 @@ class HostAutomation {
       }
     }
 
-    // 2. Check if current turn belongs to a disconnected player still in their grace window
     const current = state.players[state.turnIndex];
-    if (current?.disconnected && !current.isBot && current.reconnectGraceUntil) {
-      // Wait cleanly for rejoin or graceTimer expiration
-      return;
-    }
-
-    // 3. Check if current turn belongs to a bot (or AFK human)
     if (current && (current.isBot || current.autoPlay) && current.cards.length > 0 && !pendingTrade) {
       const turnKey = `${state.roundNumber}_${state.stateVersion}_${current.id}`;
       this.botTimer = window.setTimeout(() => {
         const fresh = this.engine.getState();
         const activeBot = fresh.players[fresh.turnIndex];
-        if (!activeBot || activeBot.id !== current.id || (!activeBot.isBot && !activeBot.autoPlay)) return;
+        if (!activeBot || activeBot.id !== current.id || (!activeBot.isBot && !activeBot.autoPlay)) {
+          return;
+        }
 
-        // Optional bot trade attempt once per turn if trading enabled
         if (
           fresh.rules.enableTrading &&
           fresh.tradingState &&
@@ -184,7 +192,6 @@ class HostAutomation {
       return;
     }
 
-    // 3. Human turn countdown timer
     if (state.turnDeadline && !pendingTrade) {
       const delay = Math.max(50, state.turnDeadline - Date.now());
       this.turnTimer = window.setTimeout(() => {
@@ -209,53 +216,6 @@ class HostAutomation {
       window.clearTimeout(this.turnTimer);
       this.turnTimer = null;
     }
-    if (this.graceTimer !== null) {
-      window.clearTimeout(this.graceTimer);
-      this.graceTimer = null;
-    }
-  }
-}
-
-function executeIntentOnEngine(
-  engine: CapsaHostEngine,
-  actorId: string,
-  intent: ClientIntent
-): { ok: boolean; error?: string; kickedPeerId?: string } {
-  switch (intent.type) {
-    case 'TOGGLE_READY':
-      return engine.toggleReady(actorId);
-    case 'UPDATE_RULES':
-      return engine.updateRules(actorId, intent.rules);
-    case 'ADD_BOT':
-      return engine.addBot(actorId);
-    case 'REMOVE_PLAYER':
-      return engine.removePlayer(actorId, intent.playerId);
-    case 'START_GAME':
-      return engine.startGame(actorId);
-    case 'NEXT_ROUND':
-      return engine.nextRound(actorId);
-    case 'PLAY_CARDS':
-      return engine.playCards(actorId, intent.cardIds);
-    case 'PASS':
-      return engine.passTurn(actorId);
-    case 'UNDO_PASS':
-      return engine.undoPass(actorId);
-    case 'TRADE_REQUEST':
-      return engine.tradeRequest(actorId, intent.rank, intent.suit);
-    case 'TRADE_FULFILL':
-      return engine.tradeFulfill(actorId, intent.extraCardId);
-    case 'TRADE_DECLINE':
-      return engine.tradeDecline(actorId);
-    case 'TRADE_CANCEL':
-      return engine.tradeCancel(actorId);
-    case 'DISMISS_DICE':
-      return engine.dismissDiceShowdown();
-    case 'TOGGLE_AUTOPLAY':
-      return engine.toggleAutoPlay(actorId);
-    case 'PREPARE_SWAP_DEVICE':
-      return engine.prepareSwapDevice(actorId);
-    case 'CHAT':
-      return engine.addChat(actorId, intent.text);
   }
 }
 
@@ -264,7 +224,7 @@ function executeIntentOnEngine(
 export class LocalSoloSession implements GameSession {
   readonly mode = 'solo' as const;
   private engine: CapsaHostEngine;
-  private automation: HostAutomation;
+  private automation: SoloAutomation;
   private listeners = new Set<SessionListener>();
   private hostId = 'local_player';
   private snapshot: SessionSnapshot;
@@ -277,12 +237,11 @@ export class LocalSoloSession implements GameSession {
       hostSessionId: 'solo',
       hostName: playerName,
     });
-    // Pre-fill 3 bots in Solo lobby so user can either start immediately or tweak rules first
     this.engine.addBot(this.hostId);
     this.engine.addBot(this.hostId);
     this.engine.addBot(this.hostId);
 
-    this.automation = new HostAutomation(this.engine, () => this.emit());
+    this.automation = new SoloAutomation(this.engine, () => this.emit());
     this.snapshot = {
       room: this.engine.getSanitizedState(this.hostId),
       status: 'connected',
@@ -302,7 +261,7 @@ export class LocalSoloSession implements GameSession {
   }
 
   sendIntent(intent: ClientIntent): void {
-    const res = executeIntentOnEngine(this.engine, this.hostId, intent);
+    const res = this.engine.executeIntent(this.hostId, intent);
     this.snapshot = {
       room: this.engine.getSanitizedState(this.hostId),
       status: 'connected',
@@ -334,450 +293,43 @@ export class LocalSoloSession implements GameSession {
   }
 }
 
-// ==================== 2. HOST MULTIPLAYER SESSION (WEBRTC HUB + WS FALLBACK) ====================
+// ==================== 2. AUTHORITATIVE CLOUDFLARE ROOM SESSION ====================
 
-interface PeerLink {
-  peerId: string;
-  pc: RTCPeerConnection | null;
-  dc: RTCDataChannel | null;
-  mode: 'connecting' | 'p2p' | 'relay';
-  fallbackTimer: number | null;
+const PING_INTERVAL_MS = 15_000;
+const PONG_TIMEOUT_MS = 6_000;
+const WAKE_PROBE_TIMEOUT_MS = 4_000;
+const RECONNECT_DELAYS_MS = [400, 800, 1500, 3000, 5000];
+const MAX_INITIAL_ATTEMPTS = 3;
+const MAX_RECONNECT_ATTEMPTS = 40;
+
+const FATAL_CLOSE_CODES = new Set([4001, 4003, 4004, 4009]);
+
+export interface RoomSessionOptions {
+  isCreator?: boolean;
+  password?: string;
 }
 
-export class HostMultiplayerSession implements GameSession {
-  readonly mode = 'host' as const;
-  private engine: CapsaHostEngine;
-  private automation: HostAutomation;
+export class RoomMultiplayerSession implements GameSession {
+  readonly mode = 'multiplayer' as const;
   private listeners = new Set<SessionListener>();
   private ws: WebSocket | null = null;
   private pingTimer: number | null = null;
-  private peers = new Map<string, PeerLink>();
-  private hostId: string;
+  private pongTimer: number | null = null;
+  private reconnectTimer: number | null = null;
+
   private roomCode: string;
-  private destroyed = false;
-  private lastMetaKey = '';
-  private snapshot: SessionSnapshot;
+  private playerName: string;
+  private sessionId: string;
+  private password?: string;
+  private isCreator: boolean;
 
-  constructor(roomCode: string, hostName: string) {
-    this.roomCode = roomCode.toUpperCase();
-    const sessionId = getOrCreateSessionId(this.roomCode);
-    this.hostId = `host_${sessionId.slice(0, 8)}`;
-
-    this.engine = new CapsaHostEngine({
-      code: this.roomCode,
-      mode: 'multiplayer',
-      hostId: this.hostId,
-      hostSessionId: sessionId,
-      hostName,
-    });
-
-    this.automation = new HostAutomation(this.engine, () => this.broadcastAll());
-
-    this.snapshot = {
-      room: this.engine.getSanitizedState(this.hostId),
-      status: 'connecting',
-      transport: 'host',
-      error: null,
-    };
-
-    this.connectSignaling(sessionId, hostName);
-  }
-
-  private connectSignaling(sessionId: string, hostName: string): void {
-    const url = buildWsUrl(
-      { role: 'host', peerId: this.hostId, sessionId, name: hostName },
-      this.roomCode
-    );
-    const ws = new WebSocket(url);
-    this.ws = ws;
-
-    ws.onopen = () => {
-      if (this.destroyed) return;
-      this.pingTimer = window.setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send('ping');
-      }, 25000);
-    };
-
-    ws.onmessage = (event) => {
-      if (this.destroyed || typeof event.data !== 'string' || event.data === 'pong') return;
-      let msg: SignalServerMessage;
-      try {
-        msg = JSON.parse(event.data) as SignalServerMessage;
-      } catch {
-        return;
-      }
-      this.handleSignal(msg);
-    };
-
-    ws.onerror = () => {
-      if (this.destroyed) return;
-      this.updateLocalSnapshot('error', 'Unable to connect to Cloudflare signaling room.');
-    };
-
-    ws.onclose = () => {
-      if (this.destroyed) return;
-      if (this.pingTimer !== null) {
-        window.clearInterval(this.pingTimer);
-        this.pingTimer = null;
-      }
-      if (this.snapshot.status !== 'error') {
-        this.updateLocalSnapshot('disconnected', 'Disconnected from signaling server.');
-      }
-    };
-  }
-
-  private sendSignal(data: unknown): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
-    }
-  }
-
-  private handleSignal(msg: SignalServerMessage): void {
-    switch (msg.type) {
-      case 'welcome':
-        this.updateLocalSnapshot('connected', null);
-        this.syncLobbyMeta(true);
-        break;
-
-      case 'error':
-        this.updateLocalSnapshot('error', msg.message);
-        break;
-
-      case 'peer-connected':
-        this.onPeerConnected(msg.peerId, msg.sessionId, msg.name);
-        break;
-
-      case 'peer-disconnected':
-        this.onPeerDisconnected(msg.peerId);
-        break;
-
-      case 'rtc-answer': {
-        const link = this.peers.get(msg.from);
-        if (link?.pc) {
-          void link.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)).catch(() => {
-            this.switchPeerToRelay(msg.from);
-          });
-        }
-        break;
-      }
-
-      case 'rtc-ice': {
-        const link = this.peers.get(msg.from);
-        if (link?.pc && msg.candidate) {
-          void link.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {
-            // ignore stale ICE
-          });
-        }
-        break;
-      }
-
-      case 'relay-from-peer':
-        this.handlePeerMessage(msg.from, msg.payload);
-        break;
-
-      default:
-        break;
-    }
-  }
-
-  private onPeerConnected(peerId: string, sessionId: string, name: string): void {
-    const res = this.engine.addOrRestorePeer({
-      peerId,
-      sessionId,
-      name,
-      transport: 'connecting',
-    });
-
-    if (!res.ok) {
-      this.sendSignal({
-        type: 'relay-to-peer',
-        to: peerId,
-        payload: { type: 'KICKED', message: res.error ?? 'Unable to join room.' } satisfies HostToPeerMessage,
-      });
-      this.sendSignal({ type: 'kick-peer', peerId });
-      return;
-    }
-
-    // Create peer link and attempt WebRTC P2P while immediately syncing over WS relay
-    const link: PeerLink = {
-      peerId,
-      pc: null,
-      dc: null,
-      mode: 'connecting',
-      fallbackTimer: null,
-    };
-    this.peers.set(peerId, link);
-
-    // Send instant initial state over relay so UI renders immediately
-    this.sendToPeer(peerId, {
-      type: 'STATE_SYNC',
-      state: this.engine.getSanitizedState(peerId),
-    });
-
-    // Establish direct WebRTC DataChannel
-    this.initiateWebRTC(link);
-    this.broadcastAll();
-  }
-
-  private initiateWebRTC(link: PeerLink): void {
-    if (typeof RTCPeerConnection === 'undefined') {
-      this.switchPeerToRelay(link.peerId);
-      return;
-    }
-
-    try {
-      const pc = new RTCPeerConnection(RTC_CONFIG);
-      link.pc = pc;
-
-      const dc = pc.createDataChannel('capsa', { ordered: true });
-      link.dc = dc;
-
-      link.fallbackTimer = window.setTimeout(() => {
-        if (link.mode !== 'p2p') {
-          this.switchPeerToRelay(link.peerId);
-        }
-      }, 3500);
-
-      dc.onopen = () => {
-        if (link.fallbackTimer !== null) {
-          window.clearTimeout(link.fallbackTimer);
-          link.fallbackTimer = null;
-        }
-        link.mode = 'p2p';
-        this.engine.setPeerTransport(link.peerId, 'p2p');
-        this.broadcastAll();
-      };
-
-      dc.onmessage = (ev) => {
-        if (typeof ev.data !== 'string') return;
-        try {
-          const msg = JSON.parse(ev.data) as PeerToHostMessage;
-          this.handlePeerMessage(link.peerId, msg);
-        } catch {
-          // ignore malformed packet
-        }
-      };
-
-      dc.onclose = () => {
-        if (this.peers.has(link.peerId) && link.mode === 'p2p') {
-          this.switchPeerToRelay(link.peerId);
-        }
-      };
-
-      pc.onicecandidate = (ev) => {
-        if (ev.candidate) {
-          this.sendSignal({
-            type: 'rtc-ice',
-            to: link.peerId,
-            candidate: ev.candidate.toJSON(),
-          });
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          if (this.peers.has(link.peerId)) {
-            this.switchPeerToRelay(link.peerId);
-          }
-        }
-      };
-
-      void pc
-        .createOffer()
-        .then((offer) => pc.setLocalDescription(offer).then(() => offer))
-        .then((offer) => {
-          this.sendSignal({
-            type: 'rtc-offer',
-            to: link.peerId,
-            sdp: offer,
-          });
-        })
-        .catch(() => {
-          this.switchPeerToRelay(link.peerId);
-        });
-    } catch {
-      this.switchPeerToRelay(link.peerId);
-    }
-  }
-
-  private switchPeerToRelay(peerId: string): void {
-    const link = this.peers.get(peerId);
-    if (!link) return;
-    if (link.fallbackTimer !== null) {
-      window.clearTimeout(link.fallbackTimer);
-      link.fallbackTimer = null;
-    }
-    if (link.mode !== 'relay') {
-      link.mode = 'relay';
-      this.engine.setPeerTransport(peerId, 'relay');
-      this.broadcastAll();
-    }
-  }
-
-  private onPeerDisconnected(peerId: string): void {
-    const link = this.peers.get(peerId);
-    if (link) {
-      if (link.fallbackTimer !== null) window.clearTimeout(link.fallbackTimer);
-      try {
-        link.dc?.close();
-        link.pc?.close();
-      } catch {
-        // ignore
-      }
-      this.peers.delete(peerId);
-    }
-    this.engine.handlePeerDisconnect(peerId);
-    this.broadcastAll();
-  }
-
-  private sendToPeer(peerId: string, msg: HostToPeerMessage): void {
-    const link = this.peers.get(peerId);
-    if (link?.mode === 'p2p' && link.dc && link.dc.readyState === 'open') {
-      try {
-        link.dc.send(JSON.stringify(msg));
-        return;
-      } catch {
-        this.switchPeerToRelay(peerId);
-      }
-    }
-    // Fallback over hibernatable Cloudflare DO WebSocket
-    this.sendSignal({
-      type: 'relay-to-peer',
-      to: peerId,
-      payload: msg,
-    });
-  }
-
-  private handlePeerMessage(peerId: string, msg: PeerToHostMessage): void {
-    if (!msg || msg.type !== 'INTENT') return;
-    const res = executeIntentOnEngine(this.engine, peerId, msg.intent);
-    if (!res.ok && res.error) {
-      this.sendToPeer(peerId, { type: 'ACTION_ERROR', message: res.error });
-      return;
-    }
-    this.broadcastAll();
-  }
-
-  private broadcastAll(localError: string | null = null): void {
-    // Update Host UI
-    this.snapshot = {
-      room: this.engine.getSanitizedState(this.hostId),
-      status: this.snapshot.status === 'connecting' ? 'connecting' : this.snapshot.status,
-      transport: 'host',
-      error: localError,
-    };
-    this.notify();
-
-    // Send individualized sanitized state to each connected peer
-    for (const peerId of this.peers.keys()) {
-      this.sendToPeer(peerId, {
-        type: 'STATE_SYNC',
-        state: this.engine.getSanitizedState(peerId),
-      });
-    }
-
-    this.syncLobbyMeta();
-    this.automation.schedule();
-  }
-
-  private syncLobbyMeta(force = false): void {
-    const s = this.engine.getState();
-    const host = s.players.find((p) => p.isHost);
-    const parts: string[] = [];
-    if (s.rules.enableDoubleDeck) {
-      parts.push(s.rules.doubleDeck26Cards ? '2× Deck (26)' : '2× Deck (13)');
-    }
-    if (s.rules.enableTrading) parts.push('Trading');
-    parts.push(`First to ${s.rules.pointsToWin}`);
-    const rulesSummary = parts.join(' · ');
-    const rejoinableCount = s.players.filter((p) => p.disconnected).length;
-    const metaKey = `${host?.name ?? ''}|${s.players.length}|${s.gameState}|${rulesSummary}|${rejoinableCount}`;
-    if (!force && metaKey === this.lastMetaKey) return;
-    this.lastMetaKey = metaKey;
-    this.sendSignal({
-      type: 'room-meta',
-      hostName: host?.name ?? 'Host',
-      playerCount: s.players.length,
-      gameState: s.gameState,
-      rulesSummary,
-      rejoinableCount,
-    });
-  }
-
-  private updateLocalSnapshot(status: ConnectionStatus, error: string | null): void {
-    this.snapshot = {
-      room: this.engine.getSanitizedState(this.hostId),
-      status,
-      transport: 'host',
-      error,
-    };
-    this.notify();
-  }
-
-  subscribe(listener: SessionListener): () => void {
-    this.listeners.add(listener);
-    listener(this.snapshot);
-    return () => this.listeners.delete(listener);
-  }
-
-  getSnapshot(): SessionSnapshot {
-    return this.snapshot;
-  }
-
-  sendIntent(intent: ClientIntent): void {
-    const res = executeIntentOnEngine(this.engine, this.hostId, intent);
-    if (res.kickedPeerId) {
-      this.sendToPeer(res.kickedPeerId, {
-        type: 'KICKED',
-        message: 'You were removed from the lobby by the host.',
-      });
-      this.sendSignal({ type: 'kick-peer', peerId: res.kickedPeerId });
-      this.onPeerDisconnected(res.kickedPeerId);
-    }
-    this.broadcastAll(res.ok ? null : (res.error ?? 'Action rejected.'));
-  }
-
-  private notify(): void {
-    for (const listener of this.listeners) listener(this.snapshot);
-  }
-
-  destroy(): void {
-    this.destroyed = true;
-    this.automation.clearTimers();
-    if (this.pingTimer !== null) window.clearInterval(this.pingTimer);
-    for (const link of this.peers.values()) {
-      if (link.fallbackTimer !== null) window.clearTimeout(link.fallbackTimer);
-      try {
-        link.dc?.close();
-        link.pc?.close();
-      } catch {
-        // ignore
-      }
-    }
-    this.peers.clear();
-    try {
-      this.ws?.close(1000, 'Host left');
-    } catch {
-      // ignore
-    }
-    this.listeners.clear();
-  }
-}
-
-// ==================== 3. PEER MULTIPLAYER SESSION (WEBRTC + WS FALLBACK) ====================
-
-export class PeerMultiplayerSession implements GameSession {
-  readonly mode = 'peer' as const;
-  private listeners = new Set<SessionListener>();
-  private ws: WebSocket | null = null;
-  private pc: RTCPeerConnection | null = null;
-  private dc: RTCDataChannel | null = null;
-  private pingTimer: number | null = null;
-  private fallbackTimer: number | null = null;
-  private roomCode: string;
-  private peerId: string;
+  private hasReceivedState = false;
   private lastStateVersion = 0;
+  private lastServerActivityAt = 0;
+  private reconnectAttempts = 0;
+  private fatalErrorReceived = false;
   private destroyed = false;
+
   private snapshot: SessionSnapshot = {
     room: null,
     status: 'connecting',
@@ -785,249 +337,311 @@ export class PeerMultiplayerSession implements GameSession {
     error: null,
   };
 
-  constructor(roomCode: string, playerName: string, password?: string) {
+  constructor(roomCode: string, playerName: string, options: RoomSessionOptions = {}) {
     this.roomCode = roomCode.toUpperCase();
-    const sessionId = getOrCreateSessionId(this.roomCode);
-    this.peerId = `peer_${sessionId.slice(0, 8)}_${Math.random().toString(36).slice(2, 6)}`;
+    this.playerName = playerName;
+    this.password = options.password?.trim() || undefined;
+    this.isCreator = Boolean(options.isCreator);
+    this.sessionId = getOrCreateSessionId(this.roomCode);
 
-    this.connectSignaling(sessionId, playerName, password);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.handleNetworkWake);
+      window.addEventListener('focus', this.handleFocusWake);
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+
+    this.connect();
   }
 
-  private connectSignaling(sessionId: string, playerName: string, password?: string): void {
-    const params: Record<string, string> = {
-      role: 'peer',
-      peerId: this.peerId,
-      sessionId,
-      name: playerName,
-    };
-    if (password && password.trim()) {
-      params.password = password.trim();
+  private createPeerId(): string {
+    return `p_${this.sessionId.slice(0, 8)}_${Math.random().toString(36).slice(2, 6)}`;
+  }
+
+  private connect(): void {
+    if (this.destroyed || this.fatalErrorReceived) return;
+    this.clearReconnectTimer();
+    this.clearHeartbeatTimers();
+
+    // Close any lingering old socket before opening a new one
+    if (this.ws) {
+      const stale = this.ws;
+      this.ws = null;
+      try {
+        stale.close(4000, 'Reconnecting');
+      } catch {
+        // ignore
+      }
     }
+
+    const peerId = this.createPeerId();
+    const params: Record<string, string> = {
+      role: this.isCreator && !this.hasReceivedState ? 'host' : 'peer',
+      peerId,
+      sessionId: this.sessionId,
+      name: this.playerName,
+    };
+    if (this.password) {
+      params.password = this.password;
+    }
+
     const url = buildWsUrl(params, this.roomCode);
-    const ws = new WebSocket(url);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(url);
+    } catch {
+      this.scheduleReconnect('Unable to reach game server.');
+      return;
+    }
+
     this.ws = ws;
 
     ws.onopen = () => {
-      if (this.destroyed) return;
-      this.pingTimer = window.setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send('ping');
-      }, 25000);
-
-      // If WebRTC doesn't open within 3.5s, mark local transport as relay
-      this.fallbackTimer = window.setTimeout(() => {
-        if (this.snapshot.transport === 'connecting') {
-          this.snapshot = { ...this.snapshot, transport: 'relay' };
-          this.notify();
+      if (this.destroyed || this.ws !== ws) {
+        try {
+          ws.close(1000);
+        } catch {
+          // ignore
         }
-      }, 3500);
+        return;
+      }
+      this.reconnectAttempts = 0;
+      this.lastServerActivityAt = Date.now();
+      this.startHeartbeat(ws);
     };
 
     ws.onmessage = (event) => {
-      if (this.destroyed || typeof event.data !== 'string' || event.data === 'pong') return;
-      let msg: SignalServerMessage;
+      if (this.destroyed || this.ws !== ws || typeof event.data !== 'string') return;
+      this.lastServerActivityAt = Date.now();
+      this.clearPongTimer();
+
+      if (event.data === 'pong' || event.data === '"pong"') return;
+
+      let msg: RoomToClientMessage;
       try {
-        msg = JSON.parse(event.data) as SignalServerMessage;
+        msg = JSON.parse(event.data) as RoomToClientMessage;
       } catch {
         return;
       }
-      this.handleSignal(msg);
+      this.handleServerMessage(msg);
     };
 
     ws.onerror = () => {
-      if (this.destroyed) return;
-      this.snapshot = {
-        ...this.snapshot,
-        status: 'error',
-        error: 'Unable to reach room signaling server.',
-      };
-      this.notify();
+      // Browser always follows onerror with onclose; let onclose handle retries cleanly.
     };
 
     ws.onclose = (ev) => {
-      if (this.destroyed) return;
-      if (this.pingTimer !== null) {
-        window.clearInterval(this.pingTimer);
-        this.pingTimer = null;
-      }
-      if (this.snapshot.status !== 'error') {
+      if (this.destroyed || this.ws !== ws) return;
+      this.ws = null;
+      this.clearHeartbeatTimers();
+
+      if (this.fatalErrorReceived) return;
+
+      if (FATAL_CLOSE_CODES.has(ev.code)) {
         const msg =
           ev.code === 4001
             ? 'Incorrect room password.'
             : ev.code === 4004
-              ? 'Room not found or host is offline.'
+              ? 'Table not found or has already ended.'
               : ev.code === 4003
-                ? 'You were removed by the host.'
-                : 'Disconnected from the room.';
-        this.snapshot = {
-          ...this.snapshot,
-          status: 'disconnected',
-          error: msg,
-        };
-        this.notify();
+                ? ev.reason || 'You were removed from the table.'
+                : ev.reason || 'Disconnected from the table.';
+        this.failFatally(msg, ev.code === 4004 ? 'disconnected' : 'error');
+        return;
       }
+
+      // Transient network drop, mobile sleep, Wi-Fi switch, or heartbeat timeout -> auto-reconnect!
+      this.scheduleReconnect('Connection interrupted. Trying to reconnect…');
     };
   }
 
-  private sendSignal(data: unknown): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
+  private startHeartbeat(ws: WebSocket): void {
+    this.clearHeartbeatTimers();
+    this.pingTimer = window.setInterval(() => {
+      if (this.destroyed || this.ws !== ws) return;
+      this.sendHeartbeatPing(ws, PONG_TIMEOUT_MS);
+    }, PING_INTERVAL_MS);
+  }
+
+  private sendHeartbeatPing(ws: WebSocket, timeoutMs: number): void {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    try {
+      ws.send('ping');
+    } catch {
+      this.forceReconnect(ws);
+      return;
+    }
+
+    if (this.pongTimer === null) {
+      this.pongTimer = window.setTimeout(() => {
+        this.pongTimer = null;
+        if (!this.destroyed && this.ws === ws) {
+          this.forceReconnect(ws);
+        }
+      }, timeoutMs);
     }
   }
 
-  private handleSignal(msg: SignalServerMessage): void {
+  private forceReconnect(ws: WebSocket): void {
+    this.clearHeartbeatTimers();
+    try {
+      ws.close(4008, 'Heartbeat timeout');
+    } catch {
+      // ignore
+    }
+    if (this.ws === ws) {
+      this.ws = null;
+      this.scheduleReconnect('Connection timed out. Reconnecting…');
+    }
+  }
+
+  private scheduleReconnect(fallbackError: string): void {
+    if (this.destroyed || this.fatalErrorReceived) return;
+    this.clearReconnectTimer();
+
+    const maxAttempts = this.hasReceivedState ? MAX_RECONNECT_ATTEMPTS : MAX_INITIAL_ATTEMPTS;
+    if (this.reconnectAttempts >= maxAttempts) {
+      this.failFatally(
+        this.hasReceivedState
+          ? 'Lost connection to the table. Please rejoin from the lobby.'
+          : fallbackError,
+        'disconnected'
+      );
+      return;
+    }
+
+    const baseDelay =
+      RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempts, RECONNECT_DELAYS_MS.length - 1)];
+    const jitter = Math.round(baseDelay * (0.8 + Math.random() * 0.4));
+    this.reconnectAttempts += 1;
+
+    if (this.hasReceivedState) {
+      this.snapshot = {
+        ...this.snapshot,
+        status: 'reconnecting',
+        transport: 'reconnecting',
+      };
+      this.notify();
+    }
+
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, jitter);
+  }
+
+  private handleNetworkWake = (): void => {
+    if (this.destroyed || this.fatalErrorReceived) return;
+    this.reconnectAttempts = 0;
+    if (!this.ws || this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
+      this.connect();
+      return;
+    }
+    if (this.ws.readyState === WebSocket.OPEN) {
+      this.sendHeartbeatPing(this.ws, WAKE_PROBE_TIMEOUT_MS);
+    }
+  };
+
+  private handleVisibilityChange = (): void => {
+    if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+    this.probeOrReconnectOnWake();
+  };
+
+  private handleFocusWake = (): void => {
+    this.probeOrReconnectOnWake();
+  };
+
+  private probeOrReconnectOnWake(): void {
+    if (this.destroyed || this.fatalErrorReceived) return;
+    if (!this.ws || this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
+      this.reconnectAttempts = 0;
+      this.connect();
+      return;
+    }
+    if (
+      this.ws.readyState === WebSocket.OPEN &&
+      Date.now() - this.lastServerActivityAt > 4000
+    ) {
+      this.sendHeartbeatPing(this.ws, WAKE_PROBE_TIMEOUT_MS);
+    }
+  }
+
+  private failFatally(message: string, status: 'disconnected' | 'error'): void {
+    this.fatalErrorReceived = true;
+    this.clearReconnectTimer();
+    this.clearHeartbeatTimers();
+    clearActiveRoom();
+    this.snapshot = {
+      ...this.snapshot,
+      status,
+      transport: 'connecting',
+      error: message,
+    };
+    this.notify();
+  }
+
+  private handleServerMessage(msg: RoomToClientMessage): void {
     switch (msg.type) {
       case 'welcome':
-        this.snapshot = { ...this.snapshot, status: 'connected', error: null };
+        this.reconnectAttempts = 0;
+        this.snapshot = {
+          ...this.snapshot,
+          status: 'connected',
+          transport: 'online',
+          error: null,
+        };
         this.notify();
+        break;
+
+      case 'STATE_SYNC':
+        if (msg.state.stateVersion < this.lastStateVersion) return;
+        this.lastStateVersion = msg.state.stateVersion;
+        this.hasReceivedState = true;
+        saveActiveRoom({ code: this.roomCode, name: this.playerName });
+        this.snapshot = {
+          room: msg.state,
+          status: 'connected',
+          transport: 'online',
+          error: null,
+        };
+        this.notify();
+        break;
+
+      case 'ACTION_ERROR':
+        this.snapshot = { ...this.snapshot, error: msg.message };
+        this.notify();
+        break;
+
+      case 'KICKED':
+        this.failFatally(msg.message || 'You were removed from the table.', 'error');
         break;
 
       case 'error':
-        this.snapshot = { ...this.snapshot, status: 'error', error: msg.message };
-        this.notify();
-        break;
-
-      case 'host-disconnected':
-        this.snapshot = {
-          ...this.snapshot,
-          status: 'disconnected',
-          error: msg.message || 'The host disconnected and the table closed.',
-        };
-        this.notify();
-        break;
-
-      case 'kicked':
-        this.snapshot = {
-          ...this.snapshot,
-          status: 'error',
-          error: msg.message || 'You were removed from the room.',
-        };
-        this.notify();
-        break;
-
-      case 'rtc-offer':
-        this.handleOffer(msg.sdp);
-        break;
-
-      case 'rtc-ice':
-        if (this.pc && msg.candidate) {
-          void this.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {
-            // ignore
-          });
-        }
-        break;
-
-      case 'relay-from-host':
-        this.handleHostMessage(msg.payload);
-        break;
-
-      default:
+        this.failFatally(msg.message || 'Unable to connect to room.', 'error');
         break;
     }
   }
 
-  private handleOffer(sdp: RTCSessionDescriptionInit): void {
-    if (typeof RTCPeerConnection === 'undefined') {
-      this.snapshot = { ...this.snapshot, transport: 'relay' };
-      this.notify();
-      return;
-    }
-
-    try {
-      this.pc?.close();
-      const pc = new RTCPeerConnection(RTC_CONFIG);
-      this.pc = pc;
-
-      pc.onicecandidate = (ev) => {
-        if (ev.candidate) {
-          this.sendSignal({
-            type: 'rtc-ice',
-            candidate: ev.candidate.toJSON(),
-          });
-        }
-      };
-
-      pc.ondatachannel = (ev) => {
-        const dc = ev.channel;
-        this.dc = dc;
-
-        dc.onopen = () => {
-          if (this.fallbackTimer !== null) {
-            window.clearTimeout(this.fallbackTimer);
-            this.fallbackTimer = null;
-          }
-          this.snapshot = { ...this.snapshot, transport: 'p2p' };
-          this.notify();
-        };
-
-        dc.onmessage = (msgEv) => {
-          if (typeof msgEv.data !== 'string') return;
-          try {
-            const parsed = JSON.parse(msgEv.data) as HostToPeerMessage;
-            this.handleHostMessage(parsed);
-          } catch {
-            // ignore
-          }
-        };
-
-        dc.onclose = () => {
-          if (!this.destroyed && this.snapshot.transport === 'p2p') {
-            this.snapshot = { ...this.snapshot, transport: 'relay' };
-            this.notify();
-          }
-        };
-      };
-
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          if (!this.destroyed && this.snapshot.transport !== 'relay') {
-            this.snapshot = { ...this.snapshot, transport: 'relay' };
-            this.notify();
-          }
-        }
-      };
-
-      void pc
-        .setRemoteDescription(new RTCSessionDescription(sdp))
-        .then(() => pc.createAnswer())
-        .then((answer) => pc.setLocalDescription(answer).then(() => answer))
-        .then((answer) => {
-          this.sendSignal({ type: 'rtc-answer', sdp: answer });
-        })
-        .catch(() => {
-          this.snapshot = { ...this.snapshot, transport: 'relay' };
-          this.notify();
-        });
-    } catch {
-      this.snapshot = { ...this.snapshot, transport: 'relay' };
-      this.notify();
+  private clearPongTimer(): void {
+    if (this.pongTimer !== null) {
+      window.clearTimeout(this.pongTimer);
+      this.pongTimer = null;
     }
   }
 
-  private handleHostMessage(msg: HostToPeerMessage): void {
-    if (!msg) return;
-
-    if (msg.type === 'STATE_SYNC') {
-      if (msg.state.stateVersion < this.lastStateVersion) return;
-      this.lastStateVersion = msg.state.stateVersion;
-      this.snapshot = {
-        ...this.snapshot,
-        room: msg.state,
-        status: 'connected',
-        error: null,
-      };
-      this.notify();
-      return;
+  private clearHeartbeatTimers(): void {
+    if (this.pingTimer !== null) {
+      window.clearInterval(this.pingTimer);
+      this.pingTimer = null;
     }
+    this.clearPongTimer();
+  }
 
-    if (msg.type === 'ACTION_ERROR') {
-      this.snapshot = { ...this.snapshot, error: msg.message };
-      this.notify();
-      return;
-    }
-
-    if (msg.type === 'KICKED') {
-      this.snapshot = { ...this.snapshot, status: 'error', error: msg.message };
-      this.notify();
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
   }
 
@@ -1042,17 +656,29 @@ export class PeerMultiplayerSession implements GameSession {
   }
 
   sendIntent(intent: ClientIntent): void {
-    const payload: PeerToHostMessage = { type: 'INTENT', intent };
-    if (this.dc && this.dc.readyState === 'open') {
+    if (this.destroyed || this.fatalErrorReceived) return;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const payload: ClientToRoomMessage = { type: 'INTENT', intent };
       try {
-        this.dc.send(JSON.stringify(payload));
+        this.ws.send(JSON.stringify(payload));
         return;
       } catch {
-        this.snapshot = { ...this.snapshot, transport: 'relay' };
-        this.notify();
+        this.forceReconnect(this.ws);
       }
     }
-    this.sendSignal({ type: 'relay-to-host', payload });
+
+    // If disconnected/reconnecting, nudge reconnect immediately and inform user gently
+    if (!this.ws || this.ws.readyState !== WebSocket.CONNECTING) {
+      this.reconnectAttempts = 0;
+      this.connect();
+    }
+    this.snapshot = {
+      ...this.snapshot,
+      status: this.hasReceivedState ? 'reconnecting' : 'connecting',
+      transport: this.hasReceivedState ? 'reconnecting' : 'connecting',
+      error: 'Reconnecting to table…',
+    };
+    this.notify();
   }
 
   private notify(): void {
@@ -1061,18 +687,34 @@ export class PeerMultiplayerSession implements GameSession {
 
   destroy(): void {
     this.destroyed = true;
-    if (this.pingTimer !== null) window.clearInterval(this.pingTimer);
-    if (this.fallbackTimer !== null) window.clearTimeout(this.fallbackTimer);
-    try {
-      this.dc?.close();
-      this.pc?.close();
-      this.ws?.close(1000, 'Peer left');
-    } catch {
-      // ignore
+    this.clearReconnectTimer();
+    this.clearHeartbeatTimers();
+
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleNetworkWake);
+      window.removeEventListener('focus', this.handleFocusWake);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+
+    if (this.ws) {
+      const ws = this.ws;
+      this.ws = null;
+      try {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'LEAVE' } satisfies ClientToRoomMessage));
+        }
+        ws.close(1000, 'Player left');
+      } catch {
+        // ignore
+      }
     }
     this.listeners.clear();
   }
 }
+
+// ==================== ROOM API HELPERS ====================
 
 export async function createRoomCode(hostName: string, password?: string): Promise<string> {
   const res = await fetch('/api/room/create', {

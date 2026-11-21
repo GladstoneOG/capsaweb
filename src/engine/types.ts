@@ -43,7 +43,7 @@ export const DEFAULT_RULES: CapsaRules = {
   doubleDeck26Cards: false,
 };
 
-export type PlayerTransport = 'local' | 'host' | 'p2p' | 'relay' | 'connecting' | 'bot';
+export type PlayerTransport = 'local' | 'host' | 'p2p' | 'relay' | 'online' | 'connecting' | 'bot';
 
 export interface Player {
   id: string;

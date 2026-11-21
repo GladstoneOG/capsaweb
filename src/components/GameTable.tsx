@@ -355,7 +355,6 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const myIndex = room.players.findIndex((p) => p.id === room.viewerId);
   const me = myIndex >= 0 ? room.players[myIndex] : room.players[0];
   const isHost = Boolean(me?.isHost);
-  const hasHumanPeers = room.mode === 'multiplayer' && room.players.some((p) => !p.isHost && !p.isBot);
   const isAfk = Boolean(me?.autoPlay);
   const currentPlayer = room.players[room.turnIndex];
   const diceActive = Boolean(room.diceShowdown);
@@ -1196,19 +1195,27 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
           {room.rules.enableTrading && <span className="chip hide-sm">Trading</span>}
           {room.mode === 'multiplayer' && (
             <span
-              className={`chip ${transport === 'connecting' ? '' : 'chip--mint'}`}
+              className={`chip ${
+                transport === 'reconnecting'
+                  ? 'chip--gold'
+                  : transport === 'connecting'
+                    ? ''
+                    : 'chip--mint'
+              }`}
               title={
-                transport === 'host'
-                  ? 'Hosting table'
-                  : transport === 'p2p'
-                    ? 'Direct connection'
-                    : transport === 'relay'
-                      ? 'Relayed connection'
-                      : 'Connecting to table'
+                transport === 'reconnecting'
+                  ? 'Reconnecting to table…'
+                  : transport === 'connecting'
+                    ? 'Connecting to table'
+                    : 'Connected to table'
               }
             >
               <Wifi size={12} />
-              {transport === 'connecting' ? 'Connecting' : 'Online'}
+              {transport === 'reconnecting'
+                ? 'Reconnecting…'
+                : transport === 'connecting'
+                  ? 'Connecting'
+                  : 'Online'}
             </span>
           )}
         </div>
@@ -1828,7 +1835,6 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               <button
                 type="button"
                 className="profile-opt-card"
-                disabled={isHost}
                 onClick={handleSwapDevice}
               >
                 <span className="profile-opt-icon is-sky">
@@ -1837,9 +1843,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
                 <div className="profile-opt-text">
                   <strong>Switch Device (1 min grace)</strong>
                   <small>
-                    {isHost
-                      ? 'Unavailable while hosting — closing the host tab closes the room.'
-                      : `Exit here and tap Rejoin on your phone using "${me?.name}" within 60s before a bot takes over.`}
+                    {`Exit here and tap Rejoin on your phone using "${me?.name}" within 60s before a bot takes over.`}
                   </small>
                 </div>
               </button>
@@ -1892,19 +1896,17 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
 
       <ConfirmDialog
         open={leaveConfirmOpen}
-        tone={isHost && hasHumanPeers ? 'danger' : 'default'}
-        eyebrow={isHost && hasHumanPeers ? 'Close table' : 'Leave table'}
-        title={isHost && hasHumanPeers ? 'Close this table for everyone?' : 'Leave the table?'}
+        tone="default"
+        eyebrow="Leave table"
+        title="Leave the table?"
         description={
-          isHost && hasHumanPeers
-            ? "You're hosting this multiplayer game — leaving will close the room for all connected players."
-            : room.mode === 'solo'
-              ? 'Your current practice match will end.'
-              : room.gameState === 'playing'
-                ? 'A bot will cover your seat after 15 seconds if you do not rejoin.'
-                : 'Return to the home screen.'
+          room.mode === 'solo'
+            ? 'Your current practice match will end.'
+            : room.gameState === 'playing'
+              ? 'A bot will cover your seat after 15 seconds if you do not rejoin. The table stays open for everyone else.'
+              : 'Return to the home screen. The table stays open for other players.'
         }
-        confirmLabel={isHost && hasHumanPeers ? 'Close table' : 'Leave table'}
+        confirmLabel="Leave table"
         onCancel={() => setLeaveConfirmOpen(false)}
         onConfirm={() => {
           setLeaveConfirmOpen(false);

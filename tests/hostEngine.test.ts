@@ -257,8 +257,16 @@ describe('CapsaHostEngine Authoritative Rules & Scoring', () => {
     engine.toggleReady('peer_pc');
     engine.startGame('host_1');
 
-    // Host cannot swap devices
-    expect(engine.prepareSwapDevice('host_1').ok).toBe(false);
+    // Host can now swap devices too in server-hosted multiplayer (only solo blocks it)
+    const soloEngine = new CapsaHostEngine({
+      code: 'SOLO',
+      mode: 'solo',
+      hostId: 'solo_1',
+      hostSessionId: 'sess_solo',
+      hostName: 'Solo',
+    });
+    soloEngine.startGame('solo_1');
+    expect(soloEngine.prepareSwapDevice('solo_1').ok).toBe(false);
 
     // Peer initiates 60s swap
     expect(engine.prepareSwapDevice('peer_pc').ok).toBe(true);
@@ -357,5 +365,123 @@ describe('CapsaHostEngine Authoritative Rules & Scoring', () => {
 
     expect(engine.toggleAutoPlay('host_1').ok).toBe(true);
     expect(engine.getSanitizedState('host_1').players[0].autoPlay).toBe(false);
+  });
+
+  it('keeps the match alive when the host disconnects, promotes another human, and lets the host rejoin', () => {
+    let clock = 5_000_000;
+    const engine = new CapsaHostEngine({
+      code: 'HOST',
+      mode: 'multiplayer',
+      hostId: 'host_1',
+      hostSessionId: 'sess_host',
+      hostName: 'Alice',
+      now: () => clock,
+    });
+    engine.addOrRestorePeer({ peerId: 'peer_1', sessionId: 'sess_bob', name: 'Bob', transport: 'online' });
+    engine.toggleReady('peer_1');
+    engine.startGame('host_1');
+
+    const aliceCards = [...engine.getState().players[0].cards];
+
+    // Host drops unexpectedly mid-game
+    engine.handlePeerDisconnect('host_1');
+    expect(engine.getState().players[0].disconnected).toBe(true);
+    expect(engine.getState().players[0].isBot).toBe(false);
+    expect(engine.getState().players[0].reconnectGraceUntil).toBe(clock + 15_000);
+    // During grace period Alice still retains isHost
+    expect(engine.getState().players[0].isHost).toBe(true);
+
+    // After 15s grace expires -> bot covers Alice AND Bob is promoted to table host
+    clock += 15_000;
+    expect(engine.expireReconnectGrace()).toBe(true);
+    expect(engine.getState().players[0].isBot).toBe(true);
+    expect(engine.getState().players[0].isHost).toBe(false);
+    expect(engine.getState().players[1].isHost).toBe(true);
+
+    // Alice rejoins from another device by name and reclaims her exact cards
+    const rejoin = engine.addOrRestorePeer({
+      peerId: 'host_phone',
+      sessionId: 'sess_alice_phone',
+      name: 'alice',
+      transport: 'online',
+    });
+    expect(rejoin.ok).toBe(true);
+    expect(rejoin.restored).toBe(true);
+    expect(engine.getState().players[0].id).toBe('host_phone');
+    expect(engine.getState().players[0].isBot).toBe(false);
+    expect(engine.getState().players[0].disconnected).toBe(false);
+    expect(engine.getState().players[0].cards).toEqual(aliceCards);
+  });
+
+  it('holds lobby seat briefly on involuntary drop and promotes host on explicit leave or grace expiry', () => {
+    let clock = 6_000_000;
+    const engine = new CapsaHostEngine({
+      code: 'LOBY',
+      mode: 'multiplayer',
+      hostId: 'host_1',
+      hostSessionId: 'sess_host',
+      hostName: 'Alice',
+      now: () => clock,
+    });
+    engine.addOrRestorePeer({ peerId: 'peer_1', sessionId: 'sess_bob', name: 'Bob', transport: 'online' });
+
+    // Involuntary drop in lobby (e.g. F5 refresh): seat & host preserved during 15s grace
+    engine.handlePeerDisconnect('host_1', false);
+    expect(engine.getState().players).toHaveLength(2);
+    expect(engine.getState().players[0].disconnected).toBe(true);
+    expect(engine.getState().players[0].isHost).toBe(true);
+
+    // Reconnect within 5s keeps host status
+    clock += 5_000;
+    const restored = engine.addOrRestorePeer({
+      peerId: 'host_2',
+      sessionId: 'sess_host',
+      name: 'Alice',
+      transport: 'online',
+    });
+    expect(restored.ok).toBe(true);
+    expect(engine.getState().players[0].isHost).toBe(true);
+    expect(engine.getState().players[0].disconnected).toBe(false);
+
+    // Explicit leave removes Alice immediately and promotes Bob to host
+    engine.handlePeerDisconnect('host_2', true);
+    expect(engine.getState().players).toHaveLength(1);
+    expect(engine.getState().players[0].name).toBe('Bob');
+    expect(engine.getState().players[0].isHost).toBe(true);
+    expect(engine.getState().players[0].isReady).toBe(true);
+  });
+
+  it('rehydrates state identically across Durable Object hibernation via fromState and silent socket swap', () => {
+    let clock = 7_000_000;
+    const engine = new CapsaHostEngine({
+      code: 'HIBR',
+      mode: 'multiplayer',
+      hostId: 'host_1',
+      hostSessionId: 'sess_host',
+      hostName: 'Alice',
+      now: () => clock,
+    });
+    engine.addOrRestorePeer({ peerId: 'peer_1', sessionId: 'sess_bob', name: 'Bob', transport: 'online' });
+    engine.toggleReady('peer_1');
+    engine.startGame('host_1');
+
+    const serialized = JSON.stringify(engine.getState());
+    const rehydrated = CapsaHostEngine.fromState(JSON.parse(serialized), { now: () => clock });
+    const deadlineBefore = rehydrated.getState().turnDeadline;
+    const activityBefore = rehydrated.getState().activity.length;
+
+    // Silent socket replacement (network handoff before old socket closed)
+    clock += 4_000;
+    const swap = rehydrated.addOrRestorePeer({
+      peerId: 'peer_1_new',
+      sessionId: 'sess_bob',
+      name: 'Bob',
+      transport: 'online',
+    });
+    expect(swap.ok).toBe(true);
+    expect(swap.silentSwap).toBe(true);
+    expect(rehydrated.getState().players[1].id).toBe('peer_1_new');
+    expect(rehydrated.getState().turnDeadline).toBe(deadlineBefore);
+    expect(rehydrated.getState().activity.length).toBe(activityBefore);
   });
 });

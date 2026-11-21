@@ -107,9 +107,9 @@ export function createDoubleDeck(): Card[] {
 }
 
 export function defaultRng(): number {
-  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.getRandomValues === 'function') {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
     const arr = new Uint32Array(1);
-    globalThis.crypto.getRandomValues(arr);
+    crypto.getRandomValues(arr);
     return arr[0] / 0x100000000;
   }
   return Math.random();

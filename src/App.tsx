@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientIntent } from '@engine/types';
 import {
-  HostMultiplayerSession,
   LocalSoloSession,
-  PeerMultiplayerSession,
+  RoomMultiplayerSession,
+  clearActiveRoom,
   createRoomCode,
+  loadActiveRoom,
   type GameSession,
   type SessionSnapshot,
 } from '@net/session';
@@ -40,6 +41,18 @@ export function App() {
   const [savedName, setSavedName] = useState(getInitialName);
   const [joiningCode, setJoiningCode] = useState<string | null>(null);
   const [connectStalled, setConnectStalled] = useState(false);
+  const autoResumeAttemptRef = useRef(false);
+
+  // Seamlessly resume an active multiplayer table after an accidental page refresh or mobile tab reload
+  useEffect(() => {
+    if (initialRoomCode) return;
+    const savedRoom = loadActiveRoom();
+    if (!savedRoom) return;
+    autoResumeAttemptRef.current = true;
+    const resumed = new RoomMultiplayerSession(savedRoom.code, savedRoom.name);
+    setJoiningCode(savedRoom.code);
+    setSession(resumed);
+  }, [initialRoomCode]);
 
   useEffect(() => {
     if (!session) {
@@ -64,6 +77,8 @@ export function App() {
   };
 
   const leaveSession = useCallback(() => {
+    autoResumeAttemptRef.current = false;
+    clearActiveRoom();
     setSession((prev) => {
       prev?.destroy();
       return null;
@@ -84,14 +99,18 @@ export function App() {
   }, []);
 
   const handleHost = async (name: string, password?: string) => {
+    autoResumeAttemptRef.current = false;
     persistName(name);
     setBusy(true);
     setHomeError(null);
     try {
       const code = await createRoomCode(name, password);
-      const hostSession = new HostMultiplayerSession(code, name);
+      const roomSession = new RoomMultiplayerSession(code, name, {
+        isCreator: true,
+        password,
+      });
       setJoiningCode(code);
-      setSession(hostSession);
+      setSession(roomSession);
     } catch (err) {
       setHomeError(err instanceof Error ? err.message : 'Unable to create room.');
     } finally {
@@ -100,15 +119,18 @@ export function App() {
   };
 
   const handleJoin = (code: string, name: string, password?: string) => {
+    autoResumeAttemptRef.current = false;
     persistName(name);
     setHomeError(null);
     const cleanCode = code.toUpperCase();
-    const peerSession = new PeerMultiplayerSession(cleanCode, name, password);
+    const roomSession = new RoomMultiplayerSession(cleanCode, name, { password });
     setJoiningCode(cleanCode);
-    setSession(peerSession);
+    setSession(roomSession);
   };
 
   const handleSolo = (name: string) => {
+    autoResumeAttemptRef.current = false;
+    clearActiveRoom();
     persistName(name);
     setHomeError(null);
     setJoiningCode(null);
@@ -130,12 +152,15 @@ export function App() {
 
   useEffect(() => {
     if (fatalBeforeRoom && snapshot?.error) {
+      const wasAutoResume = autoResumeAttemptRef.current;
+      autoResumeAttemptRef.current = false;
       const msg = snapshot.error;
+      clearActiveRoom();
       session?.destroy();
       setSession(null);
       setSnapshot(null);
       setJoiningCode(null);
-      setHomeError(msg);
+      setHomeError(wasAutoResume ? null : msg);
     }
   }, [fatalBeforeRoom, snapshot?.error, session]);
 
@@ -149,22 +174,7 @@ export function App() {
     return () => window.clearTimeout(id);
   }, [isConnectingToRoom]);
 
-  // Warn multiplayer host before closing/refreshing tab mid-game
-  const hasActiveHumanPeers = Boolean(
-    session?.mode === 'host' &&
-      snapshot?.room &&
-      snapshot.room.gameState !== 'lobby' &&
-      snapshot.room.players.some((p) => !p.isHost && !p.isBot && !p.disconnected)
-  );
-  useEffect(() => {
-    if (!hasActiveHumanPeers) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [hasActiveHumanPeers]);
+  const isReconnecting = snapshot?.status === 'reconnecting';
 
   return (
     <div className="app-bg">
@@ -186,7 +196,7 @@ export function App() {
             <h2 className="modal-title">Connecting to table…</h2>
             <p className="modal-sub">
               {connectStalled
-                ? 'Taking longer than usual — check that the host still has this table open.'
+                ? 'Taking longer than usual — retrying connection to the table.'
                 : 'Setting up your seat at the table.'}
             </p>
             <button type="button" className="btn btn-ghost" onClick={leaveSession}>
@@ -200,7 +210,7 @@ export function App() {
             <div className="eyebrow">Connection lost</div>
             <h2 className="modal-title">Table closed</h2>
             <p className="modal-sub">
-              {snapshot.error || 'The connection to the host was lost.'}
+              {snapshot.error || 'The connection to the table was lost.'}
             </p>
             <button type="button" className="btn btn-primary" onClick={leaveSession}>
               Back to home
@@ -210,6 +220,7 @@ export function App() {
       ) : snapshot.room.gameState === 'lobby' ? (
         <LobbyView
           room={snapshot.room}
+          reconnecting={isReconnecting}
           error={snapshot.error}
           onIntent={sendIntent}
           onLeave={leaveSession}

@@ -6,6 +6,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 
 interface LobbyViewProps {
   room: SanitizedRoomState;
+  reconnecting?: boolean;
   error: string | null;
   onIntent: (intent: ClientIntent) => void;
   onLeave: () => void;
@@ -50,7 +51,7 @@ function Toggle({
   );
 }
 
-export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
+export function LobbyView({ room, reconnecting = false, error, onIntent, onLeave }: LobbyViewProps) {
   const [copied, setCopied] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
@@ -141,6 +142,12 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
                   {copiedCode ? <Check size={14} /> : <Copy size={14} />}
                 </button>
                 {copiedCode && <span className="copy-feedback" role="status">Code copied</span>}
+                {reconnecting && (
+                  <span className="chip chip--gold" role="status" aria-live="polite">
+                    <Wifi size={12} />
+                    Reconnecting…
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -189,19 +196,29 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
                       </span>
                     )}
                     {p.isBot && <span className="tag">bot</span>}
-                    {!p.isHost && !p.isBot && (
+                    {!p.isBot && room.mode === 'multiplayer' && (
                       <span
-                        className={`tag${p.transport === 'p2p' || p.transport === 'relay' ? ' tag--mint' : ''}`}
+                        className={`tag${
+                          p.disconnected
+                            ? ' tag--gold'
+                            : p.transport === 'online' || p.transport === 'p2p' || p.transport === 'relay'
+                              ? ' tag--mint'
+                              : ''
+                        }`}
                         title={
-                          p.transport === 'p2p'
-                            ? 'Direct connection'
-                            : p.transport === 'relay'
-                              ? 'Relayed connection'
-                              : 'Connecting to table'
+                          p.disconnected
+                            ? 'Reconnecting to table'
+                            : p.transport === 'connecting'
+                              ? 'Connecting to table'
+                              : 'Connected to table'
                         }
                       >
                         <Wifi size={10} />
-                        {p.transport === 'connecting' ? 'connecting' : 'online'}
+                        {p.disconnected
+                          ? 'reconnecting'
+                          : p.transport === 'connecting'
+                            ? 'connecting'
+                            : 'online'}
                       </span>
                     )}
                   </div>
@@ -381,17 +398,17 @@ export function LobbyView({ room, error, onIntent, onLeave }: LobbyViewProps) {
 
       <ConfirmDialog
         open={leaveConfirmOpen}
-        tone={isHost && hasHumanPeers ? 'danger' : 'default'}
-        eyebrow={isHost && hasHumanPeers ? 'Close table' : 'Leave lobby'}
-        title={isHost && hasHumanPeers ? 'Close this table?' : 'Leave the lobby?'}
+        tone="default"
+        eyebrow="Leave lobby"
+        title="Leave the lobby?"
         description={
           isHost && hasHumanPeers
-            ? "You're hosting this room — leaving will close the lobby for all connected players."
+            ? 'Host controls will automatically pass to another seated player.'
             : isSolo
               ? 'Return to the home screen.'
               : 'You will return to the home screen and give up your seat.'
         }
-        confirmLabel={isHost && hasHumanPeers ? 'Close table' : 'Leave lobby'}
+        confirmLabel="Leave lobby"
         onCancel={() => setLeaveConfirmOpen(false)}
         onConfirm={() => {
           setLeaveConfirmOpen(false);
