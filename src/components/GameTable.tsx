@@ -18,8 +18,6 @@ import {
   Smartphone,
   Sparkles,
   Trophy,
-  Volume2,
-  VolumeX,
   Wifi,
   X,
 } from 'lucide-react';
@@ -34,12 +32,13 @@ import type {
   SanitizedRoomState,
 } from '@engine/types';
 import type { LocalTransportState } from '@net/protocol';
+import { useHandBoxSelect } from '../hooks/useHandBoxSelect';
 import { useHandDrag } from '../hooks/useHandDrag';
 import { haptics } from '../utils/haptics';
 import { prefersReducedMotion, shakeElement } from '../utils/motion';
 import { sfx } from '../utils/sfx';
 import { Avatar, type TimerInfo } from './Avatar';
-import { Confetti, ImpactBurst, type BurstEvent } from './Confetti';
+import { Confetti, ImpactBurst, type BurstEvent, type ConfettiOrigin } from './Confetti';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Modal } from './Modal';
 import {
@@ -50,6 +49,7 @@ import {
   TradeRespondModal,
 } from './Overlays';
 import { CardBack, PlayingCard } from './PlayingCard';
+import { SettingsMenu } from './SettingsMenu';
 
 type SeatPos = 'bottom' | 'left' | 'top' | 'right';
 
@@ -298,7 +298,6 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const [isDealing, setIsDealing] = useState(true);
   const [twoRowPref, setTwoRowPref] = useState(true);
   const [hintIdx, setHintIdx] = useState(0);
-  const [muted, setMuted] = useState(() => sfx.isMuted());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [seenActivityCount, setSeenActivityCount] = useState(room.activity.length);
   const [tradePickerOpen, setTradePickerOpen] = useState(false);
@@ -326,7 +325,10 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   // Celebratory & impact effects state
   const [finishBanner, setFinishBanner] = useState<FinishBanner | null>(null);
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
-  const [midRoundConfettiKey, setMidRoundConfettiKey] = useState<number>(0);
+  const [confettiBurst, setConfettiBurst] = useState<{
+    id: number;
+    origin?: ConfettiOrigin;
+  } | null>(null);
   const [trickBanner, setTrickBanner] = useState<TrickBanner | null>(null);
   const [isUrgentTurn, setIsUrgentTurn] = useState(false);
   const [burstEvent, setBurstEvent] = useState<BurstEvent | null>(null);
@@ -344,13 +346,29 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const tableRimRef = useRef<HTMLDivElement | null>(null);
   const feltRef = useRef<HTMLDivElement | null>(null);
   const selChipRef = useRef<HTMLDivElement | null>(null);
+  const selfAvatarRef = useRef<HTMLButtonElement | null>(null);
   const seatElsRef = useRef<Map<string, HTMLElement>>(new Map());
   const burstIdRef = useRef(0);
+  const confettiIdRef = useRef(0);
 
   const registerSeatEl = useCallback((id: string, el: HTMLElement | null) => {
     if (el) seatElsRef.current.set(id, el);
     else seatElsRef.current.delete(id);
   }, []);
+
+  const getPlayerBurstOrigin = useCallback(
+    (playerId: string): ConfettiOrigin | undefined => {
+      const el =
+        playerId === room.viewerId
+          ? selfAvatarRef.current
+          : (seatElsRef.current.get(playerId)?.querySelector<HTMLElement>('.seat-avatar') ??
+            seatElsRef.current.get(playerId));
+      const rect = el?.getBoundingClientRect() ?? feltRef.current?.getBoundingClientRect();
+      if (!rect) return undefined;
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    },
+    [room.viewerId]
+  );
 
   const myIndex = room.players.findIndex((p) => p.id === room.viewerId);
   const me = myIndex >= 0 ? room.players[myIndex] : room.players[0];
@@ -587,17 +605,39 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   }, [room.tradingState?.history, room.viewerId]);
 
   // ---------- Detect player running out of cards (1st / 2nd / 3rd) ----------
-  const knownFinishedRef = useRef<Set<string>>(new Set());
+  const knownFinishedRef = useRef<Set<string>>(
+    new Set(
+      room.players
+        .filter((p) => p.finishRank !== undefined && p.finishRank < room.players.length)
+        .map((p) => p.id)
+    )
+  );
   const lastRoundRef = useRef<number>(room.roundNumber);
+  const lastFinishGameStateRef = useRef(room.gameState);
 
   useEffect(() => {
-    if (room.roundNumber !== lastRoundRef.current) {
+    if (scoreboardVisible) {
+      setConfettiBurst(null);
+    }
+  }, [scoreboardVisible]);
+
+  useEffect(() => {
+    const wasRoundOver =
+      lastFinishGameStateRef.current === 'roundover' ||
+      lastFinishGameStateRef.current === 'gameover';
+    const roundReset =
+      room.roundNumber !== lastRoundRef.current ||
+      (wasRoundOver && room.gameState === 'playing');
+    lastFinishGameStateRef.current = room.gameState;
+
+    if (roundReset) {
       lastRoundRef.current = room.roundNumber;
       knownFinishedRef.current = new Set();
       setFinishBanner(null);
       setCelebratingId(null);
       setTrickBanner(null);
       setSweepingTrick(null);
+      setConfettiBurst(null);
     }
 
     const newlyFinished = room.players.filter(
@@ -609,42 +649,53 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
       knownFinishedRef.current.add(p.id);
     }
 
-    // Highlight the highest finisher in this update
+    const isRoundEnding = room.gameState === 'roundover' || room.gameState === 'gameover';
     newlyFinished.sort((a, b) => (a.finishRank ?? 9) - (b.finishRank ?? 9));
-    const topFinisher = newlyFinished[0];
-    const rank = topFinisher.finishRank!;
+    // On a round-ending hand, spotlight the player who actually dealt the final hand and ran out of cards
+    const spotlightFinisher = isRoundEnding
+      ? ((room.lastPlayerPlayedId
+          ? newlyFinished.find((p) => p.id === room.lastPlayerPlayedId)
+          : undefined) ?? newlyFinished[newlyFinished.length - 1])
+      : newlyFinished[0];
+    const rank = spotlightFinisher.finishRank!;
     const pts = Math.max(0, room.players.length - rank);
 
     sfx.playerFinished(rank);
-    setCelebratingId(topFinisher.id);
+    setCelebratingId(spotlightFinisher.id);
     setFinishBanner({
-      id: `${room.roundNumber}_${topFinisher.id}_${rank}`,
-      playerId: topFinisher.id,
-      name: topFinisher.id === room.viewerId ? 'You' : topFinisher.name,
+      id: `${room.roundNumber}_${spotlightFinisher.id}_${rank}`,
+      playerId: spotlightFinisher.id,
+      name: spotlightFinisher.id === room.viewerId ? 'You' : spotlightFinisher.name,
       rank,
       points: pts,
     });
-    if (rank === 1 && room.gameState === 'playing') {
-      setMidRoundConfettiKey((k) => k + 1);
-    } else {
-      const seatEl = seatElsRef.current.get(topFinisher.id);
-      const rect = seatEl?.getBoundingClientRect() ?? feltRef.current?.getBoundingClientRect();
-      if (rect) {
-        burstIdRef.current += 1;
-        setBurstEvent({
-          id: burstIdRef.current,
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-          variant: 'finish',
-        });
-      }
+
+    const origin = getPlayerBurstOrigin(spotlightFinisher.id);
+    if (isRoundEnding || rank === 1) {
+      confettiIdRef.current += 1;
+      setConfettiBurst({ id: confettiIdRef.current, origin });
+    } else if (origin) {
+      burstIdRef.current += 1;
+      setBurstEvent({
+        id: burstIdRef.current,
+        x: origin.x,
+        y: origin.y,
+        variant: 'finish',
+      });
     }
 
     const timer = window.setTimeout(() => {
-      setCelebratingId((cur) => (cur === topFinisher.id ? null : cur));
+      setCelebratingId((cur) => (cur === spotlightFinisher.id ? null : cur));
     }, 2600);
     return () => window.clearTimeout(timer);
-  }, [room.players, room.roundNumber, room.viewerId, room.gameState]);
+  }, [
+    room.players,
+    room.roundNumber,
+    room.viewerId,
+    room.gameState,
+    room.lastPlayerPlayedId,
+    getPlayerBurstOrigin,
+  ]);
 
   // ---------- Detect Trick Win / Hibah + Sweep Collect Animation ----------
   const lastTrickTsRef = useRef<number | null>(room.lastTrick?.timestamp ?? null);
@@ -709,6 +760,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     const id = window.setTimeout(() => {
       setTurnNudged(true);
       sfx.turnNudge();
+      haptics.turnNudge();
     }, 8000);
     return () => window.clearTimeout(id);
   }, [canAct, isPassQueued, room.turnIndex, room.activePlay, room.roundNumber]);
@@ -1072,6 +1124,50 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const isTradeTarget = Boolean(pendingTrade && pendingTrade.targetPlayerId === room.viewerId);
   const isTradeRequester = Boolean(pendingTrade && pendingTrade.requesterId === room.viewerId);
 
+  const sortedHandIds = useMemo(() => sortedHand.map((c) => c.id), [sortedHand]);
+  const lastBoxSfxAtRef = useRef(0);
+  const handleBoxSelectionChange = useCallback((nextIds: string[], prevIds: string[]) => {
+    setSelectedIds(nextIds);
+    const now = performance.now();
+    if (now - lastBoxSfxAtRef.current < 38) return;
+    lastBoxSfxAtRef.current = now;
+    const removing = nextIds.length < prevIds.length;
+    sfx.cardSelect(nextIds.length, removing);
+    if (removing) haptics.deselect();
+    else haptics.select();
+  }, []);
+
+  const canBoxSelect =
+    room.gameState === 'playing' &&
+    !diceActive &&
+    !isAfk &&
+    !me?.finishRank &&
+    !draggingId &&
+    sortedHand.length > 0 &&
+    !afkConfirmOpen &&
+    !leaveConfirmOpen &&
+    !tradePickerOpen &&
+    !isTradeTarget &&
+    !drawerOpen &&
+    !scoreboardVisible;
+
+  const {
+    isBoxSelecting,
+    marqueeRef,
+    handleContainerPointerDown: handleBoxSelectPointerDown,
+  } = useHandBoxSelect({
+    handRef,
+    handIds: sortedHandIds,
+    selectedIds,
+    enabled: canBoxSelect,
+    resetKey: room.roundNumber,
+    onSelectionChange: handleBoxSelectionChange,
+  });
+
+  useEffect(() => {
+    if (isBoxSelecting) setIsDealing(false);
+  }, [isBoxSelecting]);
+
   const unreadCount = Math.max(0, room.activity.length - seenActivityCount);
   const noPlays = isMyTurn && !isFirstPlayOfRound && room.activePlay && eligiblePlays.length === 0;
   const mustPass = Boolean(noPlays && !isAfk);
@@ -1150,14 +1246,24 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     <div
       className={`table-shell${canAct ? ' is-my-turn' : ''}${turnNudged ? ' is-turn-nudged' : ''}${
         isUrgentTurn ? ' is-urgent-turn' : ''
-      }`}
+      }${isBoxSelecting ? ' is-box-selecting' : ''}`}
+      onPointerDown={handleBoxSelectPointerDown}
       onContextMenu={handleRightClick}
     >
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {liveAnnouncement}
       </div>
-      {midRoundConfettiKey > 0 && room.gameState === 'playing' && (
-        <Confetti key={midRoundConfettiKey} count={70} duration={2100} mode="round" />
+      {confettiBurst && !scoreboardVisible && (
+        <Confetti
+          key={confettiBurst.id}
+          count={80}
+          duration={2100}
+          mode="round"
+          origin={confettiBurst.origin}
+          onComplete={() =>
+            setConfettiBurst((cur) => (cur?.id === confettiBurst.id ? null : cur))
+          }
+        />
       )}
       <ImpactBurst burst={burstEvent} />
 
@@ -1223,15 +1329,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
         </div>
 
         <div className="hud-actions">
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label={muted ? 'Unmute' : 'Mute'}
-            title={muted ? 'Unmute sound' : 'Mute sound'}
-            onClick={() => setMuted(sfx.toggleMute())}
-          >
-            {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
-          </button>
+          <SettingsMenu />
           <button
             type="button"
             className="icon-btn"
@@ -1622,7 +1720,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
 
         <div
           ref={handRef}
-          className={`hand${useTwoRows ? ' is-two-rows' : ''}${isDealing ? ' is-dealing' : ''}${draggingId ? ' is-dragging' : ''}${mustPass ? ' is-no-plays' : ''}${isFiveReady ? ' is-five-ready' : ''}`}
+          className={`hand${useTwoRows ? ' is-two-rows' : ''}${isDealing ? ' is-dealing' : ''}${draggingId ? ' is-dragging' : ''}${isBoxSelecting ? ' is-box-selecting' : ''}${mustPass ? ' is-no-plays' : ''}${isFiveReady ? ' is-five-ready' : ''}`}
           key={`round_${room.roundNumber}`}
         >
           {handRows.map((row, rowIdx) => {
@@ -1650,6 +1748,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
                     <div
                       key={card.id}
                       ref={(el) => registerSlot(card.id, el)}
+                      data-card-id={card.id}
                       className={`fan-slot${isBeingDragged ? ' is-drag-placeholder' : ''}${isTradeArrived ? ' is-trade-arrived' : ''}`}
                       style={{ '--off': i - (n - 1) / 2, '--i': i + rowIdx * 13 } as CSSProperties}
                     >
@@ -1686,9 +1785,19 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
           </div>
         )}
 
+        {/* Click-and-drag multi-select marquee box */}
+        {isBoxSelecting && (
+          <div
+            ref={marqueeRef}
+            className={`selection-marquee${selectionEval.valid ? ' is-valid' : ''}`}
+            aria-hidden="true"
+          />
+        )}
+
         <div className={`dock-bar${isMyTurn ? ' is-turn' : ''}${me?.finishRank ? ' is-me-done' : ''}${isAfk ? ' is-afk' : ''}`}>
           <div className="me">
             <button
+              ref={selfAvatarRef}
               type="button"
               className={`me-avatar-btn${isAfk ? ' is-afk' : ''}`}
               title={isAfk ? 'Click to resume control' : 'Click to let a bot play while AFK'}

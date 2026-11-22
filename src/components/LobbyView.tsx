@@ -3,6 +3,7 @@ import { Check, Copy, Crown, LogOut, Plus, Share2, Sparkles, Wifi, X } from 'luc
 import type { CapsaRules, ClientIntent, SanitizedRoomState } from '@engine/types';
 import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
+import { SettingsMenu } from './SettingsMenu';
 
 interface LobbyViewProps {
   room: SanitizedRoomState;
@@ -151,15 +152,18 @@ export function LobbyView({ room, reconnecting = false, error, onIntent, onLeave
               </div>
             )}
           </div>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Leave table"
-            title="Leave table"
-            onClick={() => setLeaveConfirmOpen(true)}
-          >
-            <LogOut size={17} />
-          </button>
+          <div className="lobby-head-actions">
+            <SettingsMenu />
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Leave table"
+              title="Leave table"
+              onClick={() => setLeaveConfirmOpen(true)}
+            >
+              <LogOut size={17} />
+            </button>
+          </div>
         </header>
 
         <div className="lobby-grid">

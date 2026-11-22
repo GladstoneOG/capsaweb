@@ -1309,6 +1309,7 @@ button.seat-tile.is-empty:hover {
   justify-content: center;
   min-height: 0;
   padding: 6px clamp(16px, 2.6vw, 40px) 6px;
+  touch-action: none;
 }
 
 .table-cluster {
@@ -2176,6 +2177,7 @@ button.seat-tile.is-empty:hover {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  touch-action: none;
 }
 
 .hand {
@@ -2187,6 +2189,7 @@ button.seat-tile.is-empty:hover {
   align-items: center;
   gap: 6px;
   padding-top: 28px;
+  touch-action: none;
 }
 
 /* Compact card scale for 2-row 26-card double-deck hands */
@@ -2380,22 +2383,61 @@ button.seat-tile.is-empty:hover {
   pointer-events: none;
 }
 
-/* Prevent distracting hover jumps on neighbor cards while dragging */
-.hand.is-dragging .pcard.is-interactive:hover:not(.is-selected) {
+/* Prevent distracting hover jumps on neighbor cards while dragging or box-selecting */
+.hand.is-dragging .pcard.is-interactive:hover:not(.is-selected),
+.hand.is-box-selecting .pcard.is-interactive:hover:not(.is-selected) {
   transform: none;
 }
 
-.hand.is-dragging .pcard.is-selected:hover {
+.hand.is-dragging .pcard.is-selected:hover,
+.hand.is-box-selecting .pcard.is-selected:hover {
   transform: translateY(-24px) scale(1.03);
 }
 
-.hand.is-dragging .fan-slot:hover {
+.hand.is-dragging .fan-slot:hover,
+.hand.is-box-selecting .fan-slot:hover {
   z-index: auto;
 }
 
 .hand.is-dragging,
 .hand.is-dragging * {
   cursor: grabbing !important;
+}
+
+.table-shell.is-box-selecting,
+.table-shell.is-box-selecting * {
+  cursor: crosshair !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.selection-marquee {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 85;
+  pointer-events: none;
+  border-radius: 10px;
+  border: 1.5px solid rgba(255, 225, 160, 0.86);
+  background: rgba(242, 198, 109, 0.14);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 0 18px rgba(242, 198, 109, 0.24),
+    0 4px 16px rgba(0, 0, 0, 0.24);
+  will-change: transform, width, height;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.selection-marquee.is-valid {
+  border-color: rgba(94, 234, 212, 0.9);
+  background: rgba(94, 234, 212, 0.13);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 0 20px rgba(94, 234, 212, 0.28),
+    0 4px 16px rgba(0, 0, 0, 0.24);
 }
 
 .drag-ghost {

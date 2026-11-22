@@ -9,6 +9,7 @@ class SoundFX {
   private ctx: AudioContext | null = null;
   private noiseBuf: AudioBuffer | null = null;
   private muted: boolean;
+  private listeners = new Set<() => void>();
 
   constructor() {
     let saved = false;
@@ -20,18 +21,35 @@ class SoundFX {
     this.muted = saved;
   }
 
+  private emit(): void {
+    for (const fn of this.listeners) fn();
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
   isMuted(): boolean {
     return this.muted;
   }
 
-  toggleMute(): boolean {
-    this.muted = !this.muted;
+  setMuted(muted: boolean): boolean {
+    if (this.muted === muted) return this.muted;
+    this.muted = muted;
     try {
       localStorage.setItem(STORAGE_KEY, this.muted ? '1' : '0');
     } catch {
       // ignore
     }
+    this.emit();
     return this.muted;
+  }
+
+  toggleMute(): boolean {
+    return this.setMuted(!this.muted);
   }
 
   private getContext(): AudioContext | null {

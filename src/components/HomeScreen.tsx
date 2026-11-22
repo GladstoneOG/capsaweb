@@ -13,6 +13,7 @@ import { fetchOpenRoomsResult, type LobbyListing } from '@net/session';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
 import { PlayingCard } from './PlayingCard';
+import { SettingsMenu } from './SettingsMenu';
 
 const HERO_CARDS: Card[] = [
   { id: 'h1', rank: 'J', suit: 'C' },
@@ -141,6 +142,9 @@ export function HomeScreen({
 
   return (
     <div className="screen">
+      <div className="home-corner-actions">
+        <SettingsMenu />
+      </div>
       <div className="home">
         <div className="home-card">
           <div className="hero-fan" aria-hidden="true">

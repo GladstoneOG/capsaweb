@@ -23,11 +23,17 @@ interface ConfettiPart {
   delayMs: number;
 }
 
+export interface ConfettiOrigin {
+  x: number;
+  y: number;
+}
+
 function makeConfettiParticles(
   count: number,
   w: number,
   h: number,
-  mode: 'round' | 'match'
+  mode: 'round' | 'match',
+  origin?: ConfettiOrigin
 ): ConfettiPart[] {
   const parts: ConfettiPart[] = [];
   for (let i = 0; i < count; i++) {
@@ -60,6 +66,36 @@ function makeConfettiParticles(
         suit: shape === 'suit' ? SUITS[i % SUITS.length] : undefined,
         delayMs: isSecondWave ? 260 : 0,
       });
+    } else if (origin) {
+      // Directional burst erupting from a specific player's seat toward the table
+      const inwardX = Math.max(-1, Math.min(1, (w * 0.5 - origin.x) / Math.max(1, w * 0.35)));
+      const isSide = Math.abs(inwardX) > 0.35;
+      const isTop = origin.y < h * 0.28;
+      const isBottom = origin.y > h * 0.72;
+      const vx =
+        inwardX * (3.2 + Math.random() * 7.2) +
+        (Math.random() - 0.5) * (isSide ? 7.5 : 15);
+      const vy = isTop
+        ? -(1.8 + Math.random() * 6.5)
+        : isBottom
+          ? -(10.5 + Math.random() * 9.5)
+          : -(5.5 + Math.random() * 9.5);
+      parts.push({
+        x: origin.x + (Math.random() - 0.5) * 28,
+        y: origin.y + (Math.random() - 0.5) * 20,
+        vx,
+        vy,
+        r: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 0.28,
+        phase: Math.random() * Math.PI * 2,
+        sway: 0.35 + Math.random() * 0.8,
+        w: 6 + Math.random() * 5,
+        h: 8 + Math.random() * 7,
+        c,
+        shape,
+        suit: shape === 'suit' ? SUITS[i % SUITS.length] : undefined,
+        delayMs: 0,
+      });
     } else {
       parts.push({
         x: w / 2 + (Math.random() - 0.5) * w * 0.34,
@@ -90,16 +126,28 @@ export function Confetti({
   count = 85,
   duration = 2400,
   mode = 'round',
+  origin,
+  onComplete,
 }: {
   count?: number;
   duration?: number;
   mode?: 'round' | 'match';
+  origin?: ConfettiOrigin;
+  onComplete?: () => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
   const [done, setDone] = useState(() => prefersReducedMotion());
+  const originX = origin?.x;
+  const originY = origin?.y;
 
   useEffect(() => {
-    if (done || prefersReducedMotion()) return;
+    if (prefersReducedMotion()) {
+      onCompleteRef.current?.();
+      return;
+    }
+    if (done) return;
     const canvas = ref.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
@@ -116,8 +164,10 @@ export function Confetti({
     sizeCanvas();
 
     // Keep particle counts modest for 60/120fps across desktop & mobile
-    const cappedCount = Math.min(count, mode === 'match' ? 110 : 75);
-    const parts = makeConfettiParticles(cappedCount, w, h, mode);
+    const cappedCount = Math.min(count, mode === 'match' ? 110 : 85);
+    const resolvedOrigin =
+      originX !== undefined && originY !== undefined ? { x: originX, y: originY } : undefined;
+    const parts = makeConfettiParticles(cappedCount, w, h, mode, resolvedOrigin);
 
     const onResize = () => sizeCanvas();
     window.addEventListener('resize', onResize, { passive: true });
@@ -182,6 +232,7 @@ export function Confetti({
       } else {
         ctx.clearRect(0, 0, w, h);
         setDone(true);
+        onCompleteRef.current?.();
       }
     };
 
@@ -190,7 +241,7 @@ export function Confetti({
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
     };
-  }, [count, duration, mode, done]);
+  }, [count, duration, mode, originX, originY, done]);
 
   if (done) return null;
   return <canvas ref={ref} className="confetti" aria-hidden="true" />;

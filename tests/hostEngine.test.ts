@@ -297,6 +297,36 @@ describe('CapsaHostEngine Authoritative Rules & Scoring', () => {
     expect(engine.getState().players[1].swapDevice).toBe(false);
     expect(engine.getState().players[1].reconnectGraceUntil).toBeNull();
     expect(engine.getState().players[1].isBot).toBe(false);
+
+    // Host initiates 60s Switch Device and explicitly disconnects (LEAVE)
+    const hostCards = [...engine.getState().players[0].cards];
+    expect(engine.prepareSwapDevice('host_1').ok).toBe(true);
+    expect(engine.getState().players[0].swapDevice).toBe(true);
+    expect(engine.getState().players[0].disconnected).toBe(true);
+    expect(engine.getState().players[0].reconnectGraceUntil).toBe(clock + 60_000);
+
+    // Explicit LEAVE right after PREPARE_SWAP_DEVICE preserves host's 60s grace and isHost flag
+    clock += 200;
+    engine.handlePeerDisconnect('host_1', true);
+    expect(engine.getState().players[0].isHost).toBe(true);
+    expect(engine.getState().players[0].isBot).toBe(false);
+    expect(engine.getState().players[0].reconnectGraceUntil).toBe(clock - 200 + 60_000);
+
+    // Host rejoins from phone by name within 60s -> reclaims exact hand & host status
+    clock += 20_000;
+    const hostRestored = engine.addOrRestorePeer({
+      peerId: 'host_phone',
+      sessionId: 'sess_host_phone',
+      name: 'host',
+      transport: 'online',
+    });
+    expect(hostRestored.ok).toBe(true);
+    expect(hostRestored.restored).toBe(true);
+    expect(engine.getState().players[0].id).toBe('host_phone');
+    expect(engine.getState().players[0].isHost).toBe(true);
+    expect(engine.getState().players[0].swapDevice).toBe(false);
+    expect(engine.getState().players[0].disconnected).toBe(false);
+    expect(engine.getState().players[0].cards).toEqual(hostCards);
   });
 
   it('supports Double Deck 13-card and 26-card modes via updateRules and completes 26-card round', () => {

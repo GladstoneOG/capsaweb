@@ -12,6 +12,7 @@ import {
 import { GameTable } from '@ui/GameTable';
 import { HomeScreen } from '@ui/HomeScreen';
 import { LobbyView } from '@ui/LobbyView';
+import { music, type MusicScene } from './utils/music';
 
 const NAME_KEY = 'capsa_player_name';
 
@@ -175,6 +176,18 @@ export function App() {
   }, [isConnectingToRoom]);
 
   const isReconnecting = snapshot?.status === 'reconnecting';
+  const isInGame = Boolean(
+    session &&
+      snapshot?.room &&
+      snapshot.status !== 'disconnected' &&
+      snapshot.status !== 'error' &&
+      snapshot.room.gameState !== 'lobby'
+  );
+  const musicScene: MusicScene = isInGame ? 'game' : 'lobby';
+
+  useEffect(() => {
+    music.setScene(musicScene);
+  }, [musicScene]);
 
   return (
     <div className="app-bg">
