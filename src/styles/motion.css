@@ -178,6 +178,429 @@
   }
 }
 
+/* ==================== 3B. RIM-MOUNTED ROTATING TURN BEACON ====================
+ * Lights the actual walnut/brass oval rim + outer bloom toward the active seat +
+ * a tight inner felt-lip reflection (zero smudge in the center of the felt).
+ * Strictly animates GPU-composited `transform` and `opacity` only.
+ */
+
+/* Outer golden bloom projecting outward from the rim toward the active seat */
+.turn-rim-bloom {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  animation: rimBeaconPulse 2.4s ease-in-out infinite;
+}
+
+.turn-outer-glow {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 420ms var(--ease-out);
+}
+
+.turn-outer-glow.is-on {
+  opacity: 0.92;
+}
+
+.turn-rim-bloom.is-self .turn-outer-glow.is-on {
+  opacity: 1;
+}
+
+.turn-outer-glow--top {
+  top: -40px;
+  left: 13%;
+  width: 74%;
+  height: 86px;
+  background: radial-gradient(
+    ellipse 54% 64% at 50% 62%,
+    rgba(255, 232, 152, 0.72) 0%,
+    rgba(255, 212, 114, 0.42) 38%,
+    rgba(242, 198, 109, 0.14) 68%,
+    rgba(242, 198, 109, 0) 90%
+  );
+}
+
+.turn-outer-glow--bottom {
+  bottom: -42px;
+  left: 13%;
+  width: 74%;
+  height: 88px;
+  background: radial-gradient(
+    ellipse 54% 64% at 50% 38%,
+    rgba(255, 236, 164, 0.78) 0%,
+    rgba(255, 214, 118, 0.46) 38%,
+    rgba(242, 198, 109, 0.16) 68%,
+    rgba(242, 198, 109, 0) 90%
+  );
+}
+
+.turn-outer-glow--left {
+  left: -34px;
+  top: 6%;
+  width: 76px;
+  height: 88%;
+  background: radial-gradient(
+    ellipse 62% 52% at 62% 50%,
+    rgba(255, 224, 140, 0.56) 0%,
+    rgba(242, 198, 109, 0.24) 45%,
+    rgba(242, 198, 109, 0) 76%
+  );
+}
+
+.turn-outer-glow--right {
+  right: -34px;
+  top: 6%;
+  width: 76px;
+  height: 88%;
+  background: radial-gradient(
+    ellipse 62% 52% at 38% 50%,
+    rgba(255, 224, 140, 0.56) 0%,
+    rgba(242, 198, 109, 0.24) 45%,
+    rgba(242, 198, 109, 0) 76%
+  );
+}
+
+/* Oval ring masks: exclude interior content-box so ONLY the rim band glows */
+.turn-rim-arc,
+.turn-rim-edge {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+/* Full walnut/leather rim band illumination */
+.turn-rim-arc {
+  padding: inherit;
+  z-index: 3;
+  animation: rimBeaconPulse 2.4s ease-in-out infinite;
+}
+
+/* Crisp blazing champagne-gold accent along the outer 3.5px rim bevel */
+.turn-rim-edge {
+  padding: 3.5px;
+  z-index: 4;
+  animation: rimEdgePulse 2.4s ease-in-out infinite;
+}
+
+/* Soft natural light spillover onto the outer ~32-44px margin of the green felt (stops well clear of center pile) */
+.turn-felt-spill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  animation: rimBeaconPulse 2.4s ease-in-out infinite;
+}
+
+.turn-felt-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 420ms var(--ease-out);
+}
+
+.turn-felt-glow.is-on {
+  opacity: 0.92;
+}
+
+.turn-felt-spill.is-self .turn-felt-glow.is-on {
+  opacity: 1;
+}
+
+.turn-felt-glow--top {
+  box-shadow:
+    inset 0 46px 38px -22px rgba(255, 224, 134, 0.42),
+    inset 0 18px 18px -8px rgba(255, 242, 194, 0.5);
+  -webkit-mask-image: linear-gradient(90deg, transparent 8%, #000 22%, #000 78%, transparent 92%);
+  mask-image: linear-gradient(90deg, transparent 8%, #000 22%, #000 78%, transparent 92%);
+}
+
+.turn-felt-glow--bottom {
+  box-shadow:
+    inset 0 -46px 38px -22px rgba(255, 224, 134, 0.46),
+    inset 0 -18px 18px -8px rgba(255, 242, 194, 0.54);
+  -webkit-mask-image: linear-gradient(90deg, transparent 8%, #000 22%, #000 78%, transparent 92%);
+  mask-image: linear-gradient(90deg, transparent 8%, #000 22%, #000 78%, transparent 92%);
+}
+
+.turn-felt-glow--left {
+  box-shadow:
+    inset 48px 0 40px -22px rgba(255, 224, 134, 0.42),
+    inset 20px 0 20px -8px rgba(255, 242, 194, 0.5);
+  -webkit-mask-image: linear-gradient(180deg, transparent 2%, #000 18%, #000 82%, transparent 98%);
+  mask-image: linear-gradient(180deg, transparent 2%, #000 18%, #000 82%, transparent 98%);
+}
+
+.turn-felt-glow--right {
+  box-shadow:
+    inset -48px 0 40px -22px rgba(255, 224, 134, 0.42),
+    inset -20px 0 20px -8px rgba(255, 242, 194, 0.5);
+  -webkit-mask-image: linear-gradient(180deg, transparent 2%, #000 18%, #000 82%, transparent 98%);
+  mask-image: linear-gradient(180deg, transparent 2%, #000 18%, #000 82%, transparent 98%);
+}
+
+/* Rotating conic-gradient sweep inside each ring mask */
+.turn-rim-rotor {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 170%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotate(var(--turn-deg, 180deg));
+  transition: transform 560ms var(--ease-out);
+}
+
+.turn-rim-arc .turn-rim-rotor {
+  background: conic-gradient(
+    from -38deg at 50% 50%,
+    rgba(242, 198, 109, 0) 0deg,
+    rgba(242, 198, 109, 0.34) 12deg,
+    rgba(255, 226, 146, 0.84) 26deg,
+    rgba(255, 246, 206, 0.98) 38deg,
+    rgba(255, 226, 146, 0.84) 50deg,
+    rgba(242, 198, 109, 0.34) 64deg,
+    rgba(242, 198, 109, 0) 76deg,
+    transparent 360deg
+  );
+}
+
+.turn-rim-edge .turn-rim-rotor {
+  background: conic-gradient(
+    from -35deg at 50% 50%,
+    rgba(255, 232, 160, 0) 0deg,
+    rgba(255, 224, 138, 0.48) 12deg,
+    rgba(255, 246, 205, 0.96) 25deg,
+    rgba(255, 253, 238, 1) 35deg,
+    rgba(255, 246, 205, 0.96) 45deg,
+    rgba(255, 224, 138, 0.48) 58deg,
+    rgba(255, 232, 160, 0) 70deg,
+    transparent 360deg
+  );
+}
+
+/* Wide horizontal chord enhancers so top/bottom straight rails match left/right curved end-cap prominence */
+.turn-rim-chord {
+  position: absolute;
+  left: 13%;
+  width: 74%;
+  height: 36px;
+  opacity: 0;
+  transition: opacity 420ms var(--ease-out);
+  pointer-events: none;
+}
+
+.turn-rim-chord--top {
+  top: 0;
+}
+
+.turn-rim-chord--bottom {
+  bottom: 0;
+}
+
+.turn-rim-arc .turn-rim-chord {
+  background: linear-gradient(
+    90deg,
+    rgba(242, 198, 109, 0) 0%,
+    rgba(242, 198, 109, 0.32) 12%,
+    rgba(255, 224, 140, 0.84) 24%,
+    rgba(255, 246, 206, 0.98) 38%,
+    rgba(255, 250, 222, 1) 50%,
+    rgba(255, 246, 206, 0.98) 62%,
+    rgba(255, 224, 140, 0.84) 76%,
+    rgba(242, 198, 109, 0.32) 88%,
+    rgba(242, 198, 109, 0) 100%
+  );
+}
+
+.turn-rim-edge .turn-rim-chord {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 232, 160, 0) 0%,
+    rgba(255, 224, 138, 0.48) 14%,
+    rgba(255, 246, 205, 0.96) 26%,
+    rgba(255, 253, 238, 1) 50%,
+    rgba(255, 246, 205, 0.96) 74%,
+    rgba(255, 224, 138, 0.48) 86%,
+    rgba(255, 232, 160, 0) 100%
+  );
+}
+
+.turn-rim-chord.is-on {
+  opacity: 1;
+}
+
+@keyframes rimBeaconPulse {
+  0%,
+  100% {
+    opacity: 0.76;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes rimEdgePulse {
+  0%,
+  100% {
+    opacity: 0.84;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Intensify beacon pulse during final 7s urgency or 8s turn nudge */
+.table-shell.is-my-turn.is-urgent-turn .turn-rim-bloom,
+.table-shell.is-my-turn.is-urgent-turn .turn-rim-arc,
+.table-shell.is-my-turn.is-urgent-turn .turn-rim-edge,
+.table-shell.is-my-turn.is-urgent-turn .turn-felt-spill {
+  animation-duration: 0.85s;
+}
+
+.table-shell.is-my-turn.is-turn-nudged .turn-rim-bloom,
+.table-shell.is-my-turn.is-turn-nudged .turn-rim-arc,
+.table-shell.is-my-turn.is-turn-nudged .turn-rim-edge,
+.table-shell.is-my-turn.is-turn-nudged .turn-felt-spill {
+  animation-duration: 1.25s;
+}
+
+/* Mobile portrait: left/right seats sit above the table at top-left / top-right */
+@media (max-width: 860px) and (min-height: 541px) {
+  .turn-outer-glow--left {
+    top: -26px;
+    left: 4%;
+    width: 46%;
+    height: 58px;
+    background: radial-gradient(
+      ellipse 54% 62% at 50% 62%,
+      rgba(255, 224, 140, 0.56) 0%,
+      rgba(242, 198, 109, 0.22) 48%,
+      rgba(242, 198, 109, 0) 78%
+    );
+  }
+
+  .turn-outer-glow--right {
+    top: -26px;
+    right: 4%;
+    left: auto;
+    width: 46%;
+    height: 58px;
+    background: radial-gradient(
+      ellipse 54% 62% at 50% 62%,
+      rgba(255, 224, 140, 0.56) 0%,
+      rgba(242, 198, 109, 0.22) 48%,
+      rgba(242, 198, 109, 0) 78%
+    );
+  }
+
+  .turn-outer-glow--top {
+    top: -26px;
+    height: 58px;
+  }
+
+  .turn-outer-glow--bottom {
+    bottom: -26px;
+    height: 60px;
+  }
+
+  .turn-felt-glow--top,
+  .turn-felt-glow--bottom {
+    box-shadow:
+      inset 0 28px 26px -16px rgba(255, 224, 134, 0.36),
+      inset 0 12px 14px -6px rgba(255, 242, 194, 0.44);
+  }
+
+  .turn-felt-glow--bottom {
+    box-shadow:
+      inset 0 -28px 26px -16px rgba(255, 224, 134, 0.4),
+      inset 0 -12px 14px -6px rgba(255, 242, 194, 0.48);
+  }
+
+  .turn-felt-glow--left {
+    box-shadow:
+      inset 26px 26px 26px -16px rgba(255, 224, 134, 0.36),
+      inset 11px 11px 13px -6px rgba(255, 242, 194, 0.44);
+    -webkit-mask-image: radial-gradient(ellipse 80% 74% at 0% 0%, #000 22%, transparent 74%);
+    mask-image: radial-gradient(ellipse 80% 74% at 0% 0%, #000 22%, transparent 74%);
+  }
+
+  .turn-felt-glow--right {
+    box-shadow:
+      inset -26px 26px 26px -16px rgba(255, 224, 134, 0.36),
+      inset -11px 11px 13px -6px rgba(255, 242, 194, 0.44);
+    -webkit-mask-image: radial-gradient(ellipse 80% 74% at 100% 0%, #000 22%, transparent 74%);
+    mask-image: radial-gradient(ellipse 80% 74% at 100% 0%, #000 22%, transparent 74%);
+  }
+}
+
+/* Mobile landscape: keep outer bloom & felt spill crisp and clear of center card pile */
+@media (max-height: 540px) {
+  .turn-rim-edge {
+    padding: 2.5px;
+  }
+
+  .turn-felt-glow--top {
+    box-shadow:
+      inset 0 24px 20px -12px rgba(255, 224, 134, 0.4),
+      inset 0 10px 11px -5px rgba(255, 242, 194, 0.48);
+  }
+
+  .turn-felt-glow--bottom {
+    box-shadow:
+      inset 0 -24px 20px -12px rgba(255, 224, 134, 0.44),
+      inset 0 -10px 11px -5px rgba(255, 242, 194, 0.52);
+  }
+
+  .turn-felt-glow--left {
+    box-shadow:
+      inset 30px 0 24px -13px rgba(255, 224, 134, 0.4),
+      inset 13px 0 13px -5px rgba(255, 242, 194, 0.48);
+  }
+
+  .turn-felt-glow--right {
+    box-shadow:
+      inset -30px 0 24px -13px rgba(255, 224, 134, 0.4),
+      inset -13px 0 13px -5px rgba(255, 242, 194, 0.48);
+  }
+
+  .turn-outer-glow--top {
+    top: -12px;
+    height: 28px;
+  }
+
+  .turn-outer-glow--bottom {
+    bottom: -10px;
+    height: 26px;
+    background: radial-gradient(
+      ellipse 52% 72% at 50% 30%,
+      rgba(255, 232, 160, 0.68) 0%,
+      rgba(242, 198, 109, 0.24) 50%,
+      rgba(242, 198, 109, 0) 90%
+    );
+  }
+
+  .turn-outer-glow--left {
+    left: -14px;
+    width: 34px;
+  }
+
+  .turn-outer-glow--right {
+    right: -14px;
+    width: 34px;
+  }
+}
+
 /* ==================== 4. PLAY IMPACT RIPPLE & BIG TWO SHEEN ==================== */
 
 /* Felt landing impact ripple under every play */
@@ -934,7 +1357,19 @@
     transform: translate3d(-50%, 0, 0) !important;
   }
 
+  /* Static rim turn beacon under reduced-motion (no rotation or pulsing, full clarity) */
+  .turn-rim-rotor,
+  .turn-rim-chord,
+  .turn-outer-glow,
+  .turn-felt-glow {
+    transition: none !important;
+  }
+
   /* Suppress all decorative/kinetic pulses, glows, floats, ripples, and sweeps */
+  .turn-rim-bloom,
+  .turn-rim-arc,
+  .turn-rim-edge,
+  .turn-felt-spill,
   .hero-card,
   .live-dot::after,
   .felt-ripple,

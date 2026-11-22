@@ -1078,12 +1078,14 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   const leaderName = currentPlayer?.id === room.viewerId ? 'You' : currentPlayer?.name;
 
   // Smoothly rotating clockwise spotlight angle pointing at the active player's side of the table
+  // Mobile portrait (<=860px wide AND >=541px tall) moves left/right seats to top corners;
+  // mobile landscape (<=540px tall) restores 3-column horizontal side seats.
   const [isNarrowLayout, setIsNarrowLayout] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth <= 860 : false
+    typeof window !== 'undefined' ? window.innerWidth <= 860 && window.innerHeight > 540 : false
   );
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(max-width: 860px)');
+    const mq = window.matchMedia('(max-width: 860px) and (min-height: 541px)');
     const update = () => setIsNarrowLayout(mq.matches);
     update();
     mq.addEventListener('change', update);
@@ -1272,15 +1274,75 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
             />
           ))}
 
-          <div ref={tableRimRef} className="table-rim">
-            <div ref={feltRef} className="table-felt">
-              {activeSeat && (
+          <div ref={tableRimRef} className={`table-rim${activeSeat ? ` is-turn-${activeSeat}` : ''}`}>
+            {activeSeat && (
+              <>
                 <div
-                  className={`turn-beacon${activeSeat === 'bottom' ? ' is-self' : ''}`}
+                  className={`turn-rim-bloom${activeSeat === 'bottom' ? ' is-self' : ''}`}
+                  aria-hidden="true"
+                >
+                  <span
+                    className={`turn-outer-glow turn-outer-glow--top${activeSeat === 'top' ? ' is-on' : ''}`}
+                  />
+                  <span
+                    className={`turn-outer-glow turn-outer-glow--right${activeSeat === 'right' ? ' is-on' : ''}`}
+                  />
+                  <span
+                    className={`turn-outer-glow turn-outer-glow--bottom${activeSeat === 'bottom' ? ' is-on' : ''}`}
+                  />
+                  <span
+                    className={`turn-outer-glow turn-outer-glow--left${activeSeat === 'left' ? ' is-on' : ''}`}
+                  />
+                </div>
+
+                <div
+                  className={`turn-rim-arc${activeSeat === 'bottom' ? ' is-self' : ''}`}
                   style={{ '--turn-deg': `${turnAngle}deg` } as CSSProperties}
                   aria-hidden="true"
                 >
-                  <span className="turn-beacon-beam" />
+                  <span className="turn-rim-rotor" />
+                  <span
+                    className={`turn-rim-chord turn-rim-chord--top${activeSeat === 'top' ? ' is-on' : ''}`}
+                  />
+                  <span
+                    className={`turn-rim-chord turn-rim-chord--bottom${activeSeat === 'bottom' ? ' is-on' : ''}`}
+                  />
+                </div>
+
+                <div
+                  className={`turn-rim-edge${activeSeat === 'bottom' ? ' is-self' : ''}`}
+                  style={{ '--turn-deg': `${turnAngle}deg` } as CSSProperties}
+                  aria-hidden="true"
+                >
+                  <span className="turn-rim-rotor" />
+                  <span
+                    className={`turn-rim-chord turn-rim-chord--top${activeSeat === 'top' ? ' is-on' : ''}`}
+                  />
+                  <span
+                    className={`turn-rim-chord turn-rim-chord--bottom${activeSeat === 'bottom' ? ' is-on' : ''}`}
+                  />
+                </div>
+              </>
+            )}
+
+            <div ref={feltRef} className="table-felt">
+              {activeSeat && (
+                <div
+                  className={`turn-felt-spill${activeSeat === 'bottom' ? ' is-self' : ''}`}
+                  aria-hidden="true"
+                >
+                  <span
+                    className={`turn-felt-glow turn-felt-glow--top${activeSeat === 'top' ? ' is-on' : ''}`}
+                  />
+                  <span
+                    className={`turn-felt-glow turn-felt-glow--right${activeSeat === 'right' ? ' is-on' : ''}`}
+                  />
+                  <span
+                    className={`turn-felt-glow turn-felt-glow--bottom${activeSeat === 'bottom' ? ' is-on' : ''}`}
+                  />
+                  <span
+                    className={`turn-felt-glow turn-felt-glow--left${activeSeat === 'left' ? ' is-on' : ''}`}
+                  />
                 </div>
               )}
 
