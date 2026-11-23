@@ -77,6 +77,8 @@ export function useHandDrag({
   // Map cardId -> inner .fan-flip element (used for FLIP) and outer .fan-slot element (used for hit-testing)
   const flipElsRef = useRef<Map<string, HTMLElement>>(new Map());
   const slotElsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const slotRefCallbacksRef = useRef<Map<string, (el: HTMLElement | null) => void>>(new Map());
+  const flipRefCallbacksRef = useRef<Map<string, (el: HTMLElement | null) => void>>(new Map());
   const prevRectsRef = useRef<Map<string, DOMRect> | null>(null);
 
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -94,6 +96,36 @@ export function useHandDrag({
     if (el) flipElsRef.current.set(id, el);
     else flipElsRef.current.delete(id);
   }, []);
+
+  const getSlotRef = useCallback(
+    (id: string) => {
+      let cb = slotRefCallbacksRef.current.get(id);
+      if (!cb) {
+        cb = (el: HTMLElement | null) => {
+          if (el) slotElsRef.current.set(id, el);
+          else slotElsRef.current.delete(id);
+        };
+        slotRefCallbacksRef.current.set(id, cb);
+      }
+      return cb;
+    },
+    []
+  );
+
+  const getFlipRef = useCallback(
+    (id: string) => {
+      let cb = flipRefCallbacksRef.current.get(id);
+      if (!cb) {
+        cb = (el: HTMLElement | null) => {
+          if (el) flipElsRef.current.set(id, el);
+          else flipElsRef.current.delete(id);
+        };
+        flipRefCallbacksRef.current.set(id, cb);
+      }
+      return cb;
+    },
+    []
+  );
 
   const cancelDrag = useCallback(() => {
     if (rafRef.current !== null) {
@@ -249,6 +281,9 @@ export function useHandDrag({
 
   const startGhostLoop = useCallback(() => {
     const reduced = prefersReducedMotion();
+    let prevRenderedX = NaN;
+    let prevRenderedY = NaN;
+    let prevRenderedTilt = NaN;
     const tick = () => {
       const p = pendingRef.current;
       const ghost = ghostRef.current;
@@ -263,12 +298,21 @@ export function useHandDrag({
         p.lastX = p.curX;
         const targetTilt = Math.max(-13, Math.min(13, vx * 0.7));
         p.tilt += (targetTilt - p.tilt) * 0.24;
+        if (Math.abs(p.tilt) < 0.02 && Math.abs(targetTilt) < 0.02) {
+          p.tilt = 0;
+        }
       }
 
       if (ghost) {
         const x = p.curX - p.grabOffsetX;
         const y = p.curY - p.grabOffsetY;
-        ghost.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${p.tilt.toFixed(2)}deg) scale(1.06)`;
+        const tilt = Math.round(p.tilt * 100) / 100;
+        if (x !== prevRenderedX || y !== prevRenderedY || tilt !== prevRenderedTilt) {
+          prevRenderedX = x;
+          prevRenderedY = y;
+          prevRenderedTilt = tilt;
+          ghost.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${tilt}deg) scale(1.06)`;
+        }
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -424,6 +468,8 @@ export function useHandDrag({
     ghostDims,
     registerSlot,
     registerFlip,
+    getSlotRef,
+    getFlipRef,
     handleCardPointerDown,
     snapshotRects,
   };

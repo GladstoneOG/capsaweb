@@ -533,9 +533,7 @@
   border: 1px solid var(--brass);
   box-shadow:
     inset 0 1px 0 rgba(242, 198, 109, 0.24),
-    0 22px 54px rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+    0 20px 44px rgba(0, 0, 0, 0.65);
   transform-origin: top right;
   animation: settingsPop 0.18s var(--ease-spring);
   z-index: 60;

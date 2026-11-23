@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { memo, type CSSProperties } from 'react';
 
 export interface TimerInfo {
   totalMs: number;
@@ -111,14 +111,15 @@ interface AvatarProps {
  * Curated casino-chip gradient avatar. When `active` with a `timer`, renders an SVG ring
  * that drains via a single CSS animation (no per-frame JS / React re-renders).
  */
-export function Avatar({
-  name,
-  isBot = false,
-  size = 'md',
-  active = false,
-  dimmed = false,
-  timer = null,
-}: AvatarProps) {
+export const Avatar = memo(
+  function Avatar({
+    name,
+    isBot = false,
+    size = 'md',
+    active = false,
+    dimmed = false,
+    timer = null,
+  }: AvatarProps) {
   const h = hashName(name);
   const [av1, av2] = CHIP_PALETTES[h % CHIP_PALETTES.length];
   const botVariant = (h >>> 3) % 5;
@@ -160,4 +161,14 @@ export function Avatar({
       )}
     </div>
   );
-}
+},
+  (prev, next) =>
+    prev.name === next.name &&
+    prev.isBot === next.isBot &&
+    prev.size === next.size &&
+    prev.active === next.active &&
+    prev.dimmed === next.dimmed &&
+    prev.timer?.key === next.timer?.key &&
+    prev.timer?.totalMs === next.timer?.totalMs &&
+    prev.timer?.remainingMs === next.timer?.remainingMs
+);

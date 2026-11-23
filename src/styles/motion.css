@@ -180,17 +180,16 @@
 
 /* ==================== 3B. RIM-MOUNTED ROTATING TURN BEACON ====================
  * Lights the actual walnut/brass oval rim + outer bloom toward the active seat +
- * a tight inner felt-lip reflection (zero smudge in the center of the felt).
+ * soft edge-strip felt spillover (zero full-table box-shadow blurs or duplicate rotors).
  * Strictly animates GPU-composited `transform` and `opacity` only.
  */
 
-/* Outer golden bloom projecting outward from the rim toward the active seat */
+/* Outer golden bloom projecting outward from the rim toward the active seat (steady on normal turns) */
 .turn-rim-bloom {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: -1;
-  animation: rimBeaconPulse 2.4s ease-in-out infinite;
 }
 
 .turn-outer-glow {
@@ -201,7 +200,7 @@
 }
 
 .turn-outer-glow.is-on {
-  opacity: 0.92;
+  opacity: 0.9;
 }
 
 .turn-rim-bloom.is-self .turn-outer-glow.is-on {
@@ -210,107 +209,94 @@
 
 .turn-outer-glow--top {
   top: -40px;
-  left: 13%;
-  width: 74%;
+  left: 8%;
+  width: 84%;
   height: 86px;
   background: radial-gradient(
-    ellipse 54% 64% at 50% 62%,
+    ellipse 48% 54% at 50% 58%,
     rgba(255, 232, 152, 0.72) 0%,
-    rgba(255, 212, 114, 0.42) 38%,
-    rgba(242, 198, 109, 0.14) 68%,
-    rgba(242, 198, 109, 0) 90%
+    rgba(255, 212, 114, 0.38) 40%,
+    rgba(242, 198, 109, 0.12) 72%,
+    rgba(242, 198, 109, 0) 100%
   );
 }
 
 .turn-outer-glow--bottom {
   bottom: -42px;
-  left: 13%;
-  width: 74%;
+  left: 8%;
+  width: 84%;
   height: 88px;
   background: radial-gradient(
-    ellipse 54% 64% at 50% 38%,
+    ellipse 48% 54% at 50% 42%,
     rgba(255, 236, 164, 0.78) 0%,
-    rgba(255, 214, 118, 0.46) 38%,
-    rgba(242, 198, 109, 0.16) 68%,
-    rgba(242, 198, 109, 0) 90%
+    rgba(255, 214, 118, 0.42) 40%,
+    rgba(242, 198, 109, 0.14) 72%,
+    rgba(242, 198, 109, 0) 100%
   );
 }
 
 .turn-outer-glow--left {
-  left: -34px;
-  top: 6%;
-  width: 76px;
-  height: 88%;
+  left: -38px;
+  top: 4%;
+  width: 82px;
+  height: 92%;
   background: radial-gradient(
-    ellipse 62% 52% at 62% 50%,
+    ellipse 48% 46% at 54% 50%,
     rgba(255, 224, 140, 0.56) 0%,
-    rgba(242, 198, 109, 0.24) 45%,
-    rgba(242, 198, 109, 0) 76%
+    rgba(242, 198, 109, 0.24) 46%,
+    rgba(242, 198, 109, 0) 100%
   );
 }
 
 .turn-outer-glow--right {
-  right: -34px;
-  top: 6%;
-  width: 76px;
-  height: 88%;
+  right: -38px;
+  top: 4%;
+  width: 82px;
+  height: 92%;
   background: radial-gradient(
-    ellipse 62% 52% at 38% 50%,
+    ellipse 48% 46% at 46% 50%,
     rgba(255, 224, 140, 0.56) 0%,
-    rgba(242, 198, 109, 0.24) 45%,
-    rgba(242, 198, 109, 0) 76%
+    rgba(242, 198, 109, 0.24) 46%,
+    rgba(242, 198, 109, 0) 100%
   );
 }
 
-/* Oval ring masks: exclude interior content-box so ONLY the rim band glows */
-.turn-rim-arc,
-.turn-rim-edge {
+/* Single oval ring mask: excludes interior content-box so ONLY the walnut/brass rim glows */
+.turn-rim-arc {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   overflow: hidden;
   pointer-events: none;
+  padding: inherit;
+  z-index: 3;
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
+  animation: rimBeaconPulse 2.6s ease-in-out infinite;
 }
 
-/* Full walnut/leather rim band illumination */
-.turn-rim-arc {
-  padding: inherit;
-  z-index: 3;
-  animation: rimBeaconPulse 2.4s ease-in-out infinite;
-}
-
-/* Crisp blazing champagne-gold accent along the outer 3.5px rim bevel */
-.turn-rim-edge {
-  padding: 3.5px;
-  z-index: 4;
-  animation: rimEdgePulse 2.4s ease-in-out infinite;
-}
-
-/* Soft natural light spillover onto the outer ~32-44px margin of the green felt (stops well clear of center pile) */
+/* Soft natural light spillover onto the outer ~36-46px edge of the green felt
+ * Uses compact edge-strip radial gradients instead of full-table blurred inset box-shadows + masks.
+ */
 .turn-felt-spill {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
   z-index: 1;
-  animation: rimBeaconPulse 2.4s ease-in-out infinite;
 }
 
 .turn-felt-glow {
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
   pointer-events: none;
   opacity: 0;
   transition: opacity 420ms var(--ease-out);
 }
 
 .turn-felt-glow.is-on {
-  opacity: 0.92;
+  opacity: 0.9;
 }
 
 .turn-felt-spill.is-self .turn-felt-glow.is-on {
@@ -318,43 +304,63 @@
 }
 
 .turn-felt-glow--top {
-  box-shadow:
-    inset 0 46px 38px -22px rgba(255, 224, 134, 0.42),
-    inset 0 18px 18px -8px rgba(255, 242, 194, 0.5);
-  -webkit-mask-image: linear-gradient(90deg, transparent 8%, #000 22%, #000 78%, transparent 92%);
-  mask-image: linear-gradient(90deg, transparent 8%, #000 22%, #000 78%, transparent 92%);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 64px;
+  background: radial-gradient(
+    ellipse 44% 88% at 50% 0%,
+    rgba(255, 244, 200, 0.48) 0%,
+    rgba(255, 224, 134, 0.24) 46%,
+    rgba(255, 224, 134, 0) 100%
+  );
 }
 
 .turn-felt-glow--bottom {
-  box-shadow:
-    inset 0 -46px 38px -22px rgba(255, 224, 134, 0.46),
-    inset 0 -18px 18px -8px rgba(255, 242, 194, 0.54);
-  -webkit-mask-image: linear-gradient(90deg, transparent 8%, #000 22%, #000 78%, transparent 92%);
-  mask-image: linear-gradient(90deg, transparent 8%, #000 22%, #000 78%, transparent 92%);
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 66px;
+  background: radial-gradient(
+    ellipse 44% 88% at 50% 100%,
+    rgba(255, 246, 204, 0.52) 0%,
+    rgba(255, 224, 134, 0.26) 46%,
+    rgba(255, 224, 134, 0) 100%
+  );
 }
 
 .turn-felt-glow--left {
-  box-shadow:
-    inset 48px 0 40px -22px rgba(255, 224, 134, 0.42),
-    inset 20px 0 20px -8px rgba(255, 242, 194, 0.5);
-  -webkit-mask-image: linear-gradient(180deg, transparent 2%, #000 18%, #000 82%, transparent 98%);
-  mask-image: linear-gradient(180deg, transparent 2%, #000 18%, #000 82%, transparent 98%);
+  left: 0;
+  top: 0;
+  width: 72px;
+  height: 100%;
+  background: radial-gradient(
+    ellipse 88% 44% at 0% 50%,
+    rgba(255, 244, 200, 0.48) 0%,
+    rgba(255, 224, 134, 0.24) 46%,
+    rgba(255, 224, 134, 0) 100%
+  );
 }
 
 .turn-felt-glow--right {
-  box-shadow:
-    inset -48px 0 40px -22px rgba(255, 224, 134, 0.42),
-    inset -20px 0 20px -8px rgba(255, 242, 194, 0.5);
-  -webkit-mask-image: linear-gradient(180deg, transparent 2%, #000 18%, #000 82%, transparent 98%);
-  mask-image: linear-gradient(180deg, transparent 2%, #000 18%, #000 82%, transparent 98%);
+  right: 0;
+  top: 0;
+  width: 72px;
+  height: 100%;
+  background: radial-gradient(
+    ellipse 88% 44% at 100% 50%,
+    rgba(255, 244, 200, 0.48) 0%,
+    rgba(255, 224, 134, 0.24) 46%,
+    rgba(255, 224, 134, 0) 100%
+  );
 }
 
-/* Rotating conic-gradient sweep inside each ring mask */
+/* Compact rotating conic-gradient sweep inside the single ring mask (112% covers every rim corner with 57% fewer pixels than 170%) */
 .turn-rim-rotor {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 170%;
+  width: 112%;
   aspect-ratio: 1;
   border-radius: 50%;
   transform: translate(-50%, -50%) rotate(var(--turn-deg, 180deg));
@@ -365,26 +371,12 @@
   background: conic-gradient(
     from -38deg at 50% 50%,
     rgba(242, 198, 109, 0) 0deg,
-    rgba(242, 198, 109, 0.34) 12deg,
-    rgba(255, 226, 146, 0.84) 26deg,
-    rgba(255, 246, 206, 0.98) 38deg,
-    rgba(255, 226, 146, 0.84) 50deg,
-    rgba(242, 198, 109, 0.34) 64deg,
+    rgba(242, 198, 109, 0.4) 12deg,
+    rgba(255, 232, 162, 0.9) 25deg,
+    rgba(255, 252, 232, 1) 38deg,
+    rgba(255, 232, 162, 0.9) 51deg,
+    rgba(242, 198, 109, 0.4) 64deg,
     rgba(242, 198, 109, 0) 76deg,
-    transparent 360deg
-  );
-}
-
-.turn-rim-edge .turn-rim-rotor {
-  background: conic-gradient(
-    from -35deg at 50% 50%,
-    rgba(255, 232, 160, 0) 0deg,
-    rgba(255, 224, 138, 0.48) 12deg,
-    rgba(255, 246, 205, 0.96) 25deg,
-    rgba(255, 253, 238, 1) 35deg,
-    rgba(255, 246, 205, 0.96) 45deg,
-    rgba(255, 224, 138, 0.48) 58deg,
-    rgba(255, 232, 160, 0) 70deg,
     transparent 360deg
   );
 }
@@ -412,27 +404,14 @@
   background: linear-gradient(
     90deg,
     rgba(242, 198, 109, 0) 0%,
-    rgba(242, 198, 109, 0.32) 12%,
-    rgba(255, 224, 140, 0.84) 24%,
-    rgba(255, 246, 206, 0.98) 38%,
-    rgba(255, 250, 222, 1) 50%,
-    rgba(255, 246, 206, 0.98) 62%,
-    rgba(255, 224, 140, 0.84) 76%,
-    rgba(242, 198, 109, 0.32) 88%,
-    rgba(242, 198, 109, 0) 100%
-  );
-}
-
-.turn-rim-edge .turn-rim-chord {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 232, 160, 0) 0%,
-    rgba(255, 224, 138, 0.48) 14%,
-    rgba(255, 246, 205, 0.96) 26%,
+    rgba(242, 198, 109, 0.36) 12%,
+    rgba(255, 230, 152, 0.9) 24%,
+    rgba(255, 249, 218, 0.98) 38%,
     rgba(255, 253, 238, 1) 50%,
-    rgba(255, 246, 205, 0.96) 74%,
-    rgba(255, 224, 138, 0.48) 86%,
-    rgba(255, 232, 160, 0) 100%
+    rgba(255, 249, 218, 0.98) 62%,
+    rgba(255, 230, 152, 0.9) 76%,
+    rgba(242, 198, 109, 0.36) 88%,
+    rgba(242, 198, 109, 0) 100%
   );
 }
 
@@ -443,17 +422,7 @@
 @keyframes rimBeaconPulse {
   0%,
   100% {
-    opacity: 0.76;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes rimEdgePulse {
-  0%,
-  100% {
-    opacity: 0.84;
+    opacity: 0.78;
   }
   50% {
     opacity: 1;
@@ -461,18 +430,22 @@
 }
 
 /* Intensify beacon pulse during final 7s urgency or 8s turn nudge */
-.table-shell.is-my-turn.is-urgent-turn .turn-rim-bloom,
-.table-shell.is-my-turn.is-urgent-turn .turn-rim-arc,
-.table-shell.is-my-turn.is-urgent-turn .turn-rim-edge,
-.table-shell.is-my-turn.is-urgent-turn .turn-felt-spill {
+.table-shell.is-my-turn.is-urgent-turn .turn-rim-arc {
   animation-duration: 0.85s;
 }
 
-.table-shell.is-my-turn.is-turn-nudged .turn-rim-bloom,
-.table-shell.is-my-turn.is-turn-nudged .turn-rim-arc,
-.table-shell.is-my-turn.is-turn-nudged .turn-rim-edge,
-.table-shell.is-my-turn.is-turn-nudged .turn-felt-spill {
+.table-shell.is-my-turn.is-urgent-turn .turn-rim-bloom,
+.table-shell.is-my-turn.is-urgent-turn .turn-felt-spill {
+  animation: rimBeaconPulse 0.85s ease-in-out infinite;
+}
+
+.table-shell.is-my-turn.is-turn-nudged .turn-rim-arc {
   animation-duration: 1.25s;
+}
+
+.table-shell.is-my-turn.is-turn-nudged .turn-rim-bloom,
+.table-shell.is-my-turn.is-turn-nudged .turn-felt-spill {
+  animation: rimBeaconPulse 1.25s ease-in-out infinite;
 }
 
 /* Mobile portrait: left/right seats sit above the table at top-left / top-right */
@@ -481,7 +454,7 @@
     top: -26px;
     left: 4%;
     width: 46%;
-    height: 58px;
+    height: 56px;
     background: radial-gradient(
       ellipse 54% 62% at 50% 62%,
       rgba(255, 224, 140, 0.56) 0%,
@@ -495,7 +468,7 @@
     right: 4%;
     left: auto;
     width: 46%;
-    height: 58px;
+    height: 56px;
     background: radial-gradient(
       ellipse 54% 62% at 50% 62%,
       rgba(255, 224, 140, 0.56) 0%,
@@ -506,72 +479,57 @@
 
   .turn-outer-glow--top {
     top: -26px;
-    height: 58px;
+    height: 56px;
   }
 
   .turn-outer-glow--bottom {
     bottom: -26px;
-    height: 60px;
+    height: 58px;
   }
 
   .turn-felt-glow--top,
   .turn-felt-glow--bottom {
-    box-shadow:
-      inset 0 28px 26px -16px rgba(255, 224, 134, 0.36),
-      inset 0 12px 14px -6px rgba(255, 242, 194, 0.44);
-  }
-
-  .turn-felt-glow--bottom {
-    box-shadow:
-      inset 0 -28px 26px -16px rgba(255, 224, 134, 0.4),
-      inset 0 -12px 14px -6px rgba(255, 242, 194, 0.48);
+    height: 44px;
   }
 
   .turn-felt-glow--left {
-    box-shadow:
-      inset 26px 26px 26px -16px rgba(255, 224, 134, 0.36),
-      inset 11px 11px 13px -6px rgba(255, 242, 194, 0.44);
-    -webkit-mask-image: radial-gradient(ellipse 80% 74% at 0% 0%, #000 22%, transparent 74%);
-    mask-image: radial-gradient(ellipse 80% 74% at 0% 0%, #000 22%, transparent 74%);
+    top: 0;
+    left: 0;
+    width: 60%;
+    height: 58px;
+    background: radial-gradient(
+      ellipse 76% 88% at 14% 0%,
+      rgba(255, 242, 194, 0.44) 0%,
+      rgba(255, 224, 134, 0.22) 44%,
+      rgba(255, 224, 134, 0) 100%
+    );
   }
 
   .turn-felt-glow--right {
-    box-shadow:
-      inset -26px 26px 26px -16px rgba(255, 224, 134, 0.36),
-      inset -11px 11px 13px -6px rgba(255, 242, 194, 0.44);
-    -webkit-mask-image: radial-gradient(ellipse 80% 74% at 100% 0%, #000 22%, transparent 74%);
-    mask-image: radial-gradient(ellipse 80% 74% at 100% 0%, #000 22%, transparent 74%);
+    top: 0;
+    right: 0;
+    left: auto;
+    width: 60%;
+    height: 58px;
+    background: radial-gradient(
+      ellipse 76% 88% at 86% 0%,
+      rgba(255, 242, 194, 0.44) 0%,
+      rgba(255, 224, 134, 0.22) 44%,
+      rgba(255, 224, 134, 0) 100%
+    );
   }
 }
 
 /* Mobile landscape: keep outer bloom & felt spill crisp and clear of center card pile */
 @media (max-height: 540px) {
-  .turn-rim-edge {
-    padding: 2.5px;
-  }
-
-  .turn-felt-glow--top {
-    box-shadow:
-      inset 0 24px 20px -12px rgba(255, 224, 134, 0.4),
-      inset 0 10px 11px -5px rgba(255, 242, 194, 0.48);
-  }
-
+  .turn-felt-glow--top,
   .turn-felt-glow--bottom {
-    box-shadow:
-      inset 0 -24px 20px -12px rgba(255, 224, 134, 0.44),
-      inset 0 -10px 11px -5px rgba(255, 242, 194, 0.52);
+    height: 28px;
   }
 
-  .turn-felt-glow--left {
-    box-shadow:
-      inset 30px 0 24px -13px rgba(255, 224, 134, 0.4),
-      inset 13px 0 13px -5px rgba(255, 242, 194, 0.48);
-  }
-
+  .turn-felt-glow--left,
   .turn-felt-glow--right {
-    box-shadow:
-      inset -30px 0 24px -13px rgba(255, 224, 134, 0.4),
-      inset -13px 0 13px -5px rgba(255, 242, 194, 0.48);
+    width: 34px;
   }
 
   .turn-outer-glow--top {
@@ -1368,7 +1326,6 @@
   /* Suppress all decorative/kinetic pulses, glows, floats, ripples, and sweeps */
   .turn-rim-bloom,
   .turn-rim-arc,
-  .turn-rim-edge,
   .turn-felt-spill,
   .hero-card,
   .live-dot::after,

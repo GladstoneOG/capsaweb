@@ -9,15 +9,16 @@
     radial-gradient(ellipse 100% 100% at 50% 50%, var(--bg-2) 0%, var(--bg-1) 52%, var(--bg-0) 100%);
 }
 
-/* Single static data-URI noise grain across room & felt (GPU-friendly, zero animation) */
+/* Pre-baked tiny 64x64 static noise tile (zero SVG feTurbulence rasterization) */
 .app-bg::before {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.032;
+  background-image: url('../assets/noise-tile.png');
+  background-size: 96px 96px;
 }
 
 /* ==================== 2. TABLE RIM, FELT & CREST ==================== */
@@ -35,8 +36,8 @@
     inset 0 -5px 10px rgba(0, 0, 0, 0.72),
     inset 0 0 0 6px var(--rail-leather),
     inset 0 0 0 7px var(--brass),
-    0 30px 72px rgba(0, 0, 0, 0.72),
-    0 6px 18px rgba(0, 0, 0, 0.48);
+    0 22px 48px rgba(0, 0, 0, 0.68),
+    0 6px 16px rgba(0, 0, 0, 0.46);
 }
 
 .table-felt {
@@ -54,6 +55,7 @@
   outline-offset: -5px;
 }
 
+/* Static woven felt grain via normal alpha compositing (no mix-blend-mode readback) */
 .table-felt::after {
   content: '';
   position: absolute;
@@ -61,9 +63,9 @@
   border-radius: inherit;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.055;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.045;
+  background-image: url('../assets/noise-tile.png');
+  background-size: 96px 96px;
 }
 
 .felt-crest {
@@ -75,12 +77,23 @@
 
 /* ==================== 3. REMOVE HARSH 3PX VIEWPORT OUTLINE ==================== */
 
+/* Lightweight 4-edge gradient vignette (replaces full-viewport 110-140px inset box-shadow blur) */
 .table-shell::before {
-  box-shadow: inset 0 0 110px rgba(242, 198, 109, 0.16);
+  box-shadow: none;
+  background:
+    linear-gradient(to bottom, rgba(242, 198, 109, 0.16) 0%, transparent 96px),
+    linear-gradient(to top, rgba(242, 198, 109, 0.18) 0%, transparent 110px),
+    linear-gradient(to right, rgba(242, 198, 109, 0.14) 0%, transparent 96px),
+    linear-gradient(to left, rgba(242, 198, 109, 0.14) 0%, transparent 96px);
 }
 
 .table-shell.is-my-turn.is-turn-nudged::before {
-  box-shadow: inset 0 0 140px rgba(242, 198, 109, 0.26);
+  box-shadow: none;
+  background:
+    linear-gradient(to bottom, rgba(242, 198, 109, 0.26) 0%, transparent 120px),
+    linear-gradient(to top, rgba(242, 198, 109, 0.28) 0%, transparent 130px),
+    linear-gradient(to right, rgba(242, 198, 109, 0.22) 0%, transparent 120px),
+    linear-gradient(to left, rgba(242, 198, 109, 0.22) 0%, transparent 120px);
 }
 
 .table-shell::after {
@@ -308,26 +321,30 @@
   .seat--right {
     padding: 12px 14px;
     border-radius: 20px;
-    background: var(--glass);
+    background: linear-gradient(180deg, rgba(13, 34, 26, 0.92), rgba(7, 21, 16, 0.9));
     border: 1px solid var(--line-2);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 10px 22px rgba(0, 0, 0, 0.38);
     min-width: 132px;
   }
 
   .seat--left.is-turn,
   .seat--right.is-turn {
     border-color: rgba(242, 198, 109, 0.85);
-    box-shadow: 0 0 28px rgba(242, 198, 109, 0.28), 0 10px 24px rgba(0, 0, 0, 0.42);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 232, 174, 0.18),
+      0 0 24px rgba(242, 198, 109, 0.26),
+      0 10px 22px rgba(0, 0, 0, 0.42);
   }
 }
 
 .seat--top {
   border-radius: 18px;
-  background: var(--glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: linear-gradient(180deg, rgba(13, 34, 26, 0.92), rgba(7, 21, 16, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 18px rgba(0, 0, 0, 0.38);
 }
 
 /* Tone down the glaring white opponent card-count badge; keep bright coral strictly for <=2 cards */
@@ -354,8 +371,7 @@
 /* ==================== 7. CENTER TRICK & UNDER-PLAY ==================== */
 
 .trick--under {
-  opacity: 0.36;
-  filter: brightness(0.72) saturate(0.75);
+  opacity: 0.32;
   transform: scale(0.92) translate(-12px, 10px) rotate(-4deg);
 }
 

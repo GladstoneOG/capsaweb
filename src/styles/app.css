@@ -54,7 +54,7 @@ button {
   background: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: transform 0.16s var(--ease-spring), background-color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease, box-shadow 0.16s ease;
+  transition: transform 0.16s var(--ease-spring), background-color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
 }
 
 button:disabled {
@@ -282,9 +282,9 @@ input:focus-visible {
   border-radius: 26px;
   background: var(--glass);
   border: 1px solid var(--line-2);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 20px 48px rgba(0, 0, 0, 0.5);
   text-align: center;
 }
 
@@ -361,7 +361,8 @@ input:focus-visible {
   inset: -2px;
   width: calc(100% + 4px);
   height: calc(100% + 4px);
-  transform: rotate(-90deg);
+  transform: rotate(-90deg) translateZ(0);
+  contain: strict;
   pointer-events: none;
 }
 
@@ -408,8 +409,7 @@ input:focus-visible {
   justify-content: space-between;
   flex-shrink: 0;
   text-align: left;
-  transform: translateZ(0);
-  transition: transform 0.2s var(--ease-spring), box-shadow 0.18s ease, border-color 0.18s ease;
+  transition: transform 0.2s var(--ease-spring), border-color 0.14s ease;
 }
 
 .pcard--sm {
@@ -625,11 +625,9 @@ input:focus-visible {
   border-radius: 28px;
   background: var(--glass);
   border: 1px solid var(--line-2);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 28px 70px rgba(0, 0, 0, 0.55);
+    0 24px 54px rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -671,7 +669,7 @@ input:focus-visible {
   letter-spacing: -0.03em;
   line-height: 1.04;
   color: var(--text);
-  filter: drop-shadow(0 3px 12px rgba(2, 12, 8, 0.92)) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.95));
+  filter: drop-shadow(0 3px 10px rgba(2, 12, 8, 0.92));
 }
 
 .brand span {
@@ -724,9 +722,9 @@ input:focus-visible {
   border-radius: 24px;
   background: var(--glass);
   border: 1px solid var(--line-2);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 42px rgba(0, 0, 0, 0.42);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -925,9 +923,9 @@ input:focus-visible {
   border-radius: 26px;
   background: var(--glass);
   border: 1px solid var(--line-2);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.44);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 46px rgba(0, 0, 0, 0.44);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1257,6 +1255,7 @@ button.seat-tile.is-empty:hover {
   gap: 10px;
   padding: clamp(10px, 1.2vh, 18px) clamp(14px, 1.8vw, 28px) 4px;
   z-index: 15;
+  contain: layout style;
 }
 
 .hud-chips,
@@ -1370,6 +1369,7 @@ button.seat-tile.is-empty:hover {
   justify-content: center;
   gap: 12px;
   overflow: hidden;
+  contain: layout style paint;
 }
 
 .table-felt::before {
@@ -2335,12 +2335,11 @@ button.seat-tile.is-empty:hover {
   justify-content: center;
   width: 100%;
   touch-action: none;
-  transition: opacity 0.25s ease, filter 0.25s ease;
+  transition: opacity 0.22s ease;
 }
 
 .hand.is-no-plays .hand-row {
-  opacity: 0.52;
-  filter: saturate(0.42) brightness(0.84);
+  opacity: 0.5;
 }
 
 .fan-slot {
@@ -2422,13 +2421,12 @@ button.seat-tile.is-empty:hover {
   background: rgba(242, 198, 109, 0.14);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.14),
-    0 0 18px rgba(242, 198, 109, 0.24),
-    0 4px 16px rgba(0, 0, 0, 0.24);
-  will-change: transform, width, height;
+    0 0 16px rgba(242, 198, 109, 0.22),
+    0 4px 12px rgba(0, 0, 0, 0.24);
+  will-change: transform;
   transition:
     border-color 120ms ease,
-    background-color 120ms ease,
-    box-shadow 120ms ease;
+    background-color 120ms ease;
 }
 
 .selection-marquee.is-valid {
@@ -2484,14 +2482,14 @@ button.seat-tile.is-empty:hover {
   border-radius: 999px;
   background: var(--glass);
   border: 1px solid var(--line-2);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.44);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 28px rgba(0, 0, 0, 0.44);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  transition: border-color 0.25s ease, background 0.25s ease;
 }
 
 .dock-bar::before {
@@ -2503,8 +2501,8 @@ button.seat-tile.is-empty:hover {
   z-index: -1;
   box-shadow:
     0 0 0 1px rgba(255, 228, 162, 0.52),
-    0 0 38px rgba(242, 198, 109, 0.46),
-    0 0 72px rgba(242, 198, 109, 0.22);
+    0 0 26px rgba(242, 198, 109, 0.44),
+    0 0 46px rgba(242, 198, 109, 0.2);
   opacity: 0;
   transition: opacity 0.3s ease;
   will-change: opacity;
@@ -2852,9 +2850,7 @@ button.seat-tile.is-empty:hover {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(3, 10, 7, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: radial-gradient(ellipse 80% 70% at 50% 45%, rgba(4, 14, 10, 0.74), rgba(2, 8, 6, 0.88));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3269,8 +3265,7 @@ button.seat-tile.is-empty:hover {
   height: 100%;
   background: var(--glass-strong);
   border-left: 1px solid var(--line-2);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   animation: slideLeft 0.22s var(--ease-out);

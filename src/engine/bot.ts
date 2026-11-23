@@ -43,78 +43,158 @@ function findCombinationsOfSize(hand: Card[], size: 2 | 3): Card[][] {
   return results;
 }
 
-export function findFiveCardHands(hand: Card[]): Card[][] {
-  const results: Card[][] = [];
-  const seen = new Set<string>();
+function comboKey5(i0: number, i1: number, i2: number, i3: number, i4: number): number {
+  // Fast 5-element sorting network for indices 0..31 -> packed 25-bit integer key (zero allocations)
+  let a = i0, b = i1, c = i2, d = i3, e = i4, t = 0;
+  if (a > b) { t = a; a = b; b = t; }
+  if (d > e) { t = d; d = e; e = t; }
+  if (c > e) { t = c; c = e; e = t; }
+  if (c > d) { t = c; c = d; d = t; }
+  if (a > d) { t = a; a = d; d = t; }
+  if (a > c) { t = a; a = c; c = t; }
+  if (b > e) { t = b; b = e; e = t; }
+  if (b > d) { t = b; b = d; d = t; }
+  if (b > c) { t = b; b = c; c = t; }
+  return (a << 20) | (b << 15) | (c << 10) | (d << 5) | e;
+}
 
-  const addIfValid = (combo: Card[]) => {
-    const sorted = sortCards(combo, 'rank');
-    const key = sorted.map((c) => c.id).join(',');
-    if (seen.has(key)) return;
-    seen.add(key);
-    const validated = checkCombination(sorted);
-    if (validated.type !== 'invalid') {
-      results.push(validated.cards);
-    }
-  };
-
+function findFiveCardCombos(hand: Card[], bombsOnly = false): Combination[] {
+  if (hand.length < 5) return [];
+  const sortedHand = sortCards(hand, 'rank');
+  const useIntKey = sortedHand.length <= 32;
+  const indexById = new Map<string, number>();
   const byRank: Partial<Record<Rank, Card[]>> = {};
   const bySuit: Record<Suit, Card[]> = { D: [], C: [], H: [], S: [] };
 
-  for (const c of hand) {
+  for (let i = 0; i < sortedHand.length; i++) {
+    const c = sortedHand[i];
+    indexById.set(c.id, i);
     if (!byRank[c.rank]) byRank[c.rank] = [];
     byRank[c.rank]!.push(c);
     bySuit[c.suit].push(c);
   }
 
+  const results: Combination[] = [];
+  const seenInt = useIntKey ? new Set<number>() : null;
+  const seenStr = useIntKey ? null : new Set<string>();
+
+  const markSeen = (c0: Card, c1: Card, c2: Card, c3: Card, c4: Card): boolean => {
+    if (seenInt) {
+      const k = comboKey5(
+        indexById.get(c0.id)!,
+        indexById.get(c1.id)!,
+        indexById.get(c2.id)!,
+        indexById.get(c3.id)!,
+        indexById.get(c4.id)!
+      );
+      if (seenInt.has(k)) return false;
+      seenInt.add(k);
+      return true;
+    }
+    const sorted = sortCards([c0, c1, c2, c3, c4], 'rank');
+    const key = `${sorted[0].id},${sorted[1].id},${sorted[2].id},${sorted[3].id},${sorted[4].id}`;
+    if (seenStr!.has(key)) return false;
+    seenStr!.add(key);
+    return true;
+  };
+
   // 1. Straights & Straight Flushes
-  for (const seq of VALID_STRAIGHTS) {
-    if (seq.every((r) => byRank[r] && byRank[r]!.length > 0)) {
-      const [c0, c1, c2, c3, c4] = seq.map((r) => byRank[r]!);
-      for (const a of c0) {
-        for (const b of c1) {
-          for (const c of c2) {
-            for (const d of c3) {
-              for (const e of c4) {
-                addIfValid([a, b, c, d, e]);
+  if (bombsOnly) {
+    // Fast path when only bombs (Straight Flush / Bomber) are needed
+    for (const suit of ['D', 'C', 'H', 'S'] as Suit[]) {
+      const list = bySuit[suit];
+      if (list.length < 5) continue;
+      const suitByRank: Partial<Record<Rank, Card[]>> = {};
+      for (const c of list) {
+        if (!suitByRank[c.rank]) suitByRank[c.rank] = [];
+        suitByRank[c.rank]!.push(c);
+      }
+      for (const seq of VALID_STRAIGHTS) {
+        const c0 = suitByRank[seq[0]];
+        const c1 = suitByRank[seq[1]];
+        const c2 = suitByRank[seq[2]];
+        const c3 = suitByRank[seq[3]];
+        const c4 = suitByRank[seq[4]];
+        if (!c0 || !c1 || !c2 || !c3 || !c4) continue;
+        for (const a of c0) {
+          for (const b of c1) {
+            for (const c of c2) {
+              for (const d of c3) {
+                for (const e of c4) {
+                  if (markSeen(a, b, c, d, e)) {
+                    results.push({ type: 'straightflush', cards: [a, b, c, d, e] });
+                  }
+                }
               }
             }
           }
         }
       }
     }
-  }
+  } else {
+    for (const seq of VALID_STRAIGHTS) {
+      const c0 = byRank[seq[0]];
+      const c1 = byRank[seq[1]];
+      const c2 = byRank[seq[2]];
+      const c3 = byRank[seq[3]];
+      const c4 = byRank[seq[4]];
+      if (!c0 || !c1 || !c2 || !c3 || !c4) continue;
+      for (const a of c0) {
+        for (const b of c1) {
+          for (const c of c2) {
+            for (const d of c3) {
+              for (const e of c4) {
+                if (markSeen(a, b, c, d, e)) {
+                  const isSF =
+                    a.suit === b.suit && b.suit === c.suit && c.suit === d.suit && d.suit === e.suit;
+                  results.push({ type: isSF ? 'straightflush' : 'straight', cards: [a, b, c, d, e] });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
 
-  // 2. Flushes
-  for (const suit of ['D', 'C', 'H', 'S'] as Suit[]) {
-    const list = bySuit[suit];
-    if (list.length >= 5) {
-      for (const comb of getCombinations(list, 5)) {
-        addIfValid(comb);
+    // 2. Flushes (cards in bySuit are already rank-sorted; straight flushes are skipped via seen)
+    for (const suit of ['D', 'C', 'H', 'S'] as Suit[]) {
+      const list = bySuit[suit];
+      if (list.length >= 5) {
+        for (const comb of getCombinations(list, 5)) {
+          if (markSeen(comb[0], comb[1], comb[2], comb[3], comb[4])) {
+            results.push({ type: 'flush', cards: comb });
+          }
+        }
       }
     }
-  }
 
-  // 3. Full Houses
-  const triplets: { rank: Rank; cards: Card[] }[] = [];
-  const pairs: { rank: Rank; cards: Card[] }[] = [];
-  for (const rank of Object.keys(byRank) as Rank[]) {
-    const cards = byRank[rank]!;
-    if (cards.length >= 3) {
-      for (const comb of getCombinations(cards, 3)) {
-        triplets.push({ rank, cards: comb });
+    // 3. Full Houses (triplets & pairs are already rank-sorted)
+    const triplets: { rank: Rank; order: number; cards: Card[] }[] = [];
+    const pairs: { rank: Rank; order: number; cards: Card[] }[] = [];
+    for (const rank of Object.keys(byRank) as Rank[]) {
+      const cards = byRank[rank]!;
+      const order = RANK_ORDER[rank];
+      if (cards.length >= 3) {
+        for (const comb of getCombinations(cards, 3)) {
+          triplets.push({ rank, order, cards: comb });
+        }
+      }
+      if (cards.length >= 2) {
+        for (const comb of getCombinations(cards, 2)) {
+          pairs.push({ rank, order, cards: comb });
+        }
       }
     }
-    if (cards.length >= 2) {
-      for (const comb of getCombinations(cards, 2)) {
-        pairs.push({ rank, cards: comb });
-      }
-    }
-  }
-  for (const trip of triplets) {
-    for (const pr of pairs) {
-      if (trip.rank !== pr.rank) {
-        addIfValid([...trip.cards, ...pr.cards]);
+    for (const trip of triplets) {
+      for (const pr of pairs) {
+        if (trip.rank === pr.rank) continue;
+        const cards =
+          trip.order < pr.order
+            ? [trip.cards[0], trip.cards[1], trip.cards[2], pr.cards[0], pr.cards[1]]
+            : [pr.cards[0], pr.cards[1], trip.cards[0], trip.cards[1], trip.cards[2]];
+        if (markSeen(cards[0], cards[1], cards[2], cards[3], cards[4])) {
+          results.push({ type: 'fullhouse', cards });
+        }
       }
     }
   }
@@ -124,10 +204,25 @@ export function findFiveCardHands(hand: Card[]): Card[][] {
     const cards = byRank[rank]!;
     if (cards.length >= 4) {
       for (const quad of getCombinations(cards, 4)) {
-        const quadIds = new Set(quad.map((c) => c.id));
-        for (const kicker of hand) {
-          if (!quadIds.has(kicker.id)) {
-            addIfValid([...quad, kicker]);
+        const q0 = indexById.get(quad[0].id)!;
+        const q1 = indexById.get(quad[1].id)!;
+        const q2 = indexById.get(quad[2].id)!;
+        const q3 = indexById.get(quad[3].id)!;
+        for (let k = 0; k < sortedHand.length; k++) {
+          if (k === q0 || k === q1 || k === q2 || k === q3) continue;
+          const kicker = sortedHand[k];
+          const bomberCards =
+            k < q0
+              ? [kicker, quad[0], quad[1], quad[2], quad[3]]
+              : k < q1
+                ? [quad[0], kicker, quad[1], quad[2], quad[3]]
+                : k < q2
+                  ? [quad[0], quad[1], kicker, quad[2], quad[3]]
+                  : k < q3
+                    ? [quad[0], quad[1], quad[2], kicker, quad[3]]
+                    : [quad[0], quad[1], quad[2], quad[3], kicker];
+          if (markSeen(bomberCards[0], bomberCards[1], bomberCards[2], bomberCards[3], bomberCards[4])) {
+            results.push({ type: 'bomber', cards: bomberCards });
           }
         }
       }
@@ -137,6 +232,73 @@ export function findFiveCardHands(hand: Card[]): Card[][] {
   return results;
 }
 
+export function findFiveCardHands(hand: Card[]): Card[][] {
+  return findFiveCardCombos(hand, false).map((c) => c.cards);
+}
+
+function getValidCombos(
+  hand: Card[],
+  prevPlay: Combination | null,
+  isFirstPlay: boolean,
+  rules: BombRules = { enableBombsSingle: true, enableBombsPair: true },
+  startingCard?: Card | null
+): Combination[] {
+  const validCombos: Combination[] = [];
+  const sortedHand = sortCards(hand, 'rank');
+
+  const filterFirstPlay = (combos: Combination[]) => {
+    if (!isFirstPlay) return combos;
+    return combos.filter((combo) => containsStartingCard(combo.cards, startingCard));
+  };
+
+  if (!prevPlay) {
+    for (const c of sortedHand) validCombos.push({ type: 'single', cards: [c] });
+    for (const p of findCombinationsOfSize(sortedHand, 2)) validCombos.push({ type: 'pair', cards: p });
+    for (const t of findCombinationsOfSize(sortedHand, 3)) validCombos.push({ type: 'tris', cards: t });
+    validCombos.push(...findFiveCardCombos(sortedHand, false));
+    return filterFirstPlay(validCombos);
+  }
+
+  const targetSize = prevPlay.cards.length;
+
+  if (targetSize === 1) {
+    for (const c of sortedHand) {
+      const combo: Combination = { type: 'single', cards: [c] };
+      if (canBeat(combo, prevPlay, rules)) {
+        validCombos.push(combo);
+      }
+    }
+    if (rules.enableBombsSingle && prevPlay.cards[0].rank === '2') {
+      validCombos.push(...findFiveCardCombos(sortedHand, true));
+    }
+  } else if (targetSize === 2) {
+    for (const p of findCombinationsOfSize(sortedHand, 2)) {
+      const combo: Combination = { type: 'pair', cards: p };
+      if (canBeat(combo, prevPlay, rules)) {
+        validCombos.push(combo);
+      }
+    }
+    if (rules.enableBombsPair && prevPlay.cards[0].rank === '2') {
+      validCombos.push(...findFiveCardCombos(sortedHand, true));
+    }
+  } else if (targetSize === 3) {
+    for (const t of findCombinationsOfSize(sortedHand, 3)) {
+      const combo: Combination = { type: 'tris', cards: t };
+      if (canBeat(combo, prevPlay, rules)) {
+        validCombos.push(combo);
+      }
+    }
+  } else if (targetSize === 5) {
+    for (const combo of findFiveCardCombos(sortedHand, false)) {
+      if (canBeat(combo, prevPlay, rules)) {
+        validCombos.push(combo);
+      }
+    }
+  }
+
+  return filterFirstPlay(validCombos);
+}
+
 export function getValidPlays(
   hand: Card[],
   prevPlay: Combination | null,
@@ -144,78 +306,19 @@ export function getValidPlays(
   rules: BombRules = { enableBombsSingle: true, enableBombsPair: true },
   startingCard?: Card | null
 ): Card[][] {
-  const validPlays: Card[][] = [];
-
-  const filterFirstPlay = (plays: Card[][]) => {
-    if (!isFirstPlay) return plays;
-    return plays.filter((play) => containsStartingCard(play, startingCard));
-  };
-
-  if (!prevPlay) {
-    for (const c of hand) validPlays.push([c]);
-    validPlays.push(...findCombinationsOfSize(hand, 2));
-    validPlays.push(...findCombinationsOfSize(hand, 3));
-    validPlays.push(...findFiveCardHands(hand));
-    return filterFirstPlay(validPlays);
-  }
-
-  const targetSize = prevPlay.cards.length;
-
-  if (targetSize === 1) {
-    for (const c of hand) {
-      const play = [c];
-      if (canBeat(checkCombination(play), prevPlay, rules)) {
-        validPlays.push(play);
-      }
-    }
-    if (rules.enableBombsSingle && prevPlay.cards[0].rank === '2') {
-      const bombs = findFiveCardHands(hand).filter((b) => {
-        const t = checkCombination(b).type;
-        return t === 'bomber' || t === 'straightflush';
-      });
-      validPlays.push(...bombs);
-    }
-  } else if (targetSize === 2) {
-    for (const p of findCombinationsOfSize(hand, 2)) {
-      if (canBeat(checkCombination(p), prevPlay, rules)) {
-        validPlays.push(p);
-      }
-    }
-    if (rules.enableBombsPair && prevPlay.cards[0].rank === '2') {
-      const bombs = findFiveCardHands(hand).filter((b) => {
-        const t = checkCombination(b).type;
-        return t === 'bomber' || t === 'straightflush';
-      });
-      validPlays.push(...bombs);
-    }
-  } else if (targetSize === 3) {
-    for (const t of findCombinationsOfSize(hand, 3)) {
-      if (canBeat(checkCombination(t), prevPlay, rules)) {
-        validPlays.push(t);
-      }
-    }
-  } else if (targetSize === 5) {
-    for (const f of findFiveCardHands(hand)) {
-      if (canBeat(checkCombination(f), prevPlay, rules)) {
-        validPlays.push(f);
-      }
-    }
-  }
-
-  return filterFirstPlay(validPlays);
+  return getValidCombos(hand, prevPlay, isFirstPlay, rules, startingCard).map((c) => c.cards);
 }
 
-export function ratePlay(cards: Card[]): number {
-  const combo = checkCombination(cards);
+function rateCombo(combo: Combination): number {
   if (combo.type === 'single') {
     return RANK_ORDER[combo.cards[0].rank] * 10 + SUIT_ORDER[combo.cards[0].suit];
   }
   if (combo.type === 'pair') {
-    const high = sortCards(combo.cards, 'rank')[1];
+    const high = combo.cards[1];
     return 200 + RANK_ORDER[high.rank] * 10 + SUIT_ORDER[high.suit];
   }
   if (combo.type === 'tris') {
-    const high = sortCards(combo.cards, 'rank')[2];
+    const high = combo.cards[2];
     return 400 + RANK_ORDER[high.rank] * 10 + SUIT_ORDER[high.suit];
   }
   if (combo.type !== 'invalid') {
@@ -223,14 +326,18 @@ export function ratePlay(cards: Card[]): number {
     let highCard = combo.cards[4];
     if (combo.type === 'fullhouse') {
       const parts = getFullHouseParts(combo.cards);
-      highCard = sortCards(parts.triple, 'rank')[2];
+      highCard = parts.triple[2];
     } else if (combo.type === 'bomber') {
       const parts = getBomberParts(combo.cards);
-      highCard = sortCards(parts.quad, 'rank')[3];
+      highCard = parts.quad[3];
     }
     return 600 + typeVal * 100 + RANK_ORDER[highCard.rank] * 10 + SUIT_ORDER[highCard.suit];
   }
   return 9999;
+}
+
+export function ratePlay(cards: Card[]): number {
+  return rateCombo(checkCombination(cards));
 }
 
 export function getSortedEligiblePlays(
@@ -240,22 +347,16 @@ export function getSortedEligiblePlays(
   rules: BombRules = { enableBombsSingle: true, enableBombsPair: true },
   startingCard?: Card | null
 ): Card[][] {
-  const validPlays = getValidPlays(hand, prevPlay, isFirstPlay, rules, startingCard);
-  if (validPlays.length === 0) return [];
+  const validCombos = getValidCombos(hand, prevPlay, isFirstPlay, rules, startingCard);
+  if (validCombos.length === 0) return [];
 
-  const uniqueMap = new Map<string, Card[]>();
-  for (const play of validPlays) {
-    const sorted = sortCards(play, 'rank');
-    const key = sorted.map((c) => c.id).join(',');
-    if (!uniqueMap.has(key)) {
-      uniqueMap.set(key, sorted);
-    }
-  }
-
-  const ratedPlays = Array.from(uniqueMap.values()).map((play) => ({
-    play,
-    rating: ratePlay(play),
-    length: play.length,
+  const ratedPlays = validCombos.map((combo) => ({
+    play:
+      combo.type === 'straight' || combo.type === 'straightflush'
+        ? sortCards(combo.cards, 'rank')
+        : combo.cards,
+    rating: rateCombo(combo),
+    length: combo.cards.length,
   }));
 
   if (!prevPlay) {
@@ -360,11 +461,10 @@ export function evaluateBotTradeFulfill(
   if (sameRankCount >= 4) return { accept: false };
 
   // 2. Never break a Straight Flush
-  const fiveCombos = findFiveCardHands(hand);
-  const inStraightFlush = fiveCombos.some((combo) => {
-    const evaluated = checkCombination(combo);
-    return evaluated.type === 'straightflush' && combo.some((c) => c.id === matchedCard.id);
-  });
+  const fiveCombos = findFiveCardCombos(hand);
+  const inStraightFlush = fiveCombos.some(
+    (combo) => combo.type === 'straightflush' && combo.cards.some((c) => c.id === matchedCard.id)
+  );
   if (inStraightFlush) return { accept: false };
 
   // 3. Keep isolated 2♠
@@ -374,18 +474,21 @@ export function evaluateBotTradeFulfill(
   }
 
   // 4. Avoid breaking triple in Full House / Bomber
-  const inBomberOrFH = fiveCombos.some((combo) => {
-    const evaluated = checkCombination(combo);
-    return (
-      (evaluated.type === 'bomber' || evaluated.type === 'fullhouse') &&
-      combo.some((c) => c.id === matchedCard.id)
-    );
-  });
+  const inBomberOrFH = fiveCombos.some(
+    (combo) =>
+      (combo.type === 'bomber' || combo.type === 'fullhouse') &&
+      combo.cards.some((c) => c.id === matchedCard.id)
+  );
   if (inBomberOrFH && sameRankCount >= 3) return { accept: false };
 
   // Pick worst unwanted card to attach as extra card
   const candidates = hand.filter((c) => c.id !== matchedCard.id);
   if (candidates.length === 0) return { accept: false };
+
+  const inFiveCardIds = new Set<string>();
+  for (const combo of fiveCombos) {
+    for (const fc of combo.cards) inFiveCardIds.add(fc.id);
+  }
 
   const scoredCandidates = candidates.map((c) => {
     let trashScore = 100 - (RANK_ORDER[c.rank] * 4 + SUIT_ORDER[c.suit]);
@@ -396,7 +499,7 @@ export function evaluateBotTradeFulfill(
     if (countInCandidates === 1) trashScore += 50;
     else if (countInCandidates >= 2) trashScore -= 40;
 
-    if (fiveCombos.some((f) => f.some((fc) => fc.id === c.id))) {
+    if (inFiveCardIds.has(c.id)) {
       trashScore -= 80;
     }
     return { card: c, trashScore };

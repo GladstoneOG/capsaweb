@@ -33,11 +33,11 @@
   --text-2: #bccbc3;
   --text-3: #8da69b;
 
-  /* Surfaces */
-  --glass: rgba(10, 26, 20, 0.74);
-  --glass-strong: rgba(7, 19, 15, 0.93);
-  --surface-raised: rgba(13, 33, 25, 0.84);
-  --surface-inset: rgba(4, 13, 10, 0.68);
+  /* Surfaces (rich opaque-enough glass that needs no costly real-time backdrop blur) */
+  --glass: rgba(9, 25, 19, 0.88);
+  --glass-strong: rgba(7, 19, 15, 0.96);
+  --surface-raised: rgba(11, 29, 22, 0.92);
+  --surface-inset: rgba(4, 13, 10, 0.72);
   --rail-leather: #1f120b;
   --brass: rgba(242, 198, 109, 0.34);
   --line: rgba(255, 255, 255, 0.09);

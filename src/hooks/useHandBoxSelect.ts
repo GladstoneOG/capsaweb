@@ -195,6 +195,8 @@ export function useHandBoxSelect({
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
   const marqueeRef = useRef<HTMLDivElement | null>(null);
   const pendingRef = useRef<PendingMarquee | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingModeRef = useRef<BoxSelectMode>('replace');
 
   const handIdsRef = useRef(handIds);
   handIdsRef.current = handIds;
@@ -210,10 +212,18 @@ export function useHandBoxSelect({
 
   const handKey = handIds.join(',');
 
+  const cancelScheduledFrame = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+
   const cancelBoxSelect = useCallback(() => {
+    cancelScheduledFrame();
     pendingRef.current = null;
     setIsBoxSelecting(false);
-  }, []);
+  }, [cancelScheduledFrame]);
 
   useEffect(() => {
     if (!enabled) cancelBoxSelect();
@@ -286,14 +296,29 @@ export function useHandBoxSelect({
         p.hitBoxes = snapshotHandHitBoxes(handRef.current);
         window.getSelection()?.removeAllRanges();
         setIsBoxSelecting(true);
+        updateSelection(p, modeFromModifiers(e));
+        return;
       }
 
-      updateSelection(p, modeFromModifiers(e));
+      // Coalesce high-polling pointermove updates to 1 per visual frame
+      pendingModeRef.current = modeFromModifiers(e);
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          const cur = pendingRef.current;
+          if (!cur || !cur.active) return;
+          updateSelection(cur, pendingModeRef.current);
+        });
+      }
     };
 
     const finishPointer = (e: PointerEvent) => {
       const p = pendingRef.current;
       if (!p || e.pointerId !== p.pointerId) return;
+      cancelScheduledFrame();
+      if (p.active) {
+        updateSelection(p, modeFromModifiers(e));
+      }
       pendingRef.current = null;
       if (p.active) setIsBoxSelecting(false);
     };
@@ -331,6 +356,7 @@ export function useHandBoxSelect({
     window.addEventListener('keyup', onKeyChange);
 
     return () => {
+      cancelScheduledFrame();
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', finishPointer);
       window.removeEventListener('pointercancel', finishPointer);
@@ -339,7 +365,7 @@ export function useHandBoxSelect({
       window.removeEventListener('keydown', onKeyChange);
       window.removeEventListener('keyup', onKeyChange);
     };
-  }, [handRef, updateSelection, cancelBoxSelect]);
+  }, [handRef, updateSelection, cancelBoxSelect, cancelScheduledFrame]);
 
   // Position marquee cleanly on its very first mounted frame
   useLayoutEffect(() => {

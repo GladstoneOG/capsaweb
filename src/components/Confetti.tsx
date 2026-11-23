@@ -20,6 +20,7 @@ interface ConfettiPart {
   c: string;
   shape: ParticleShape;
   suit?: (typeof SUITS)[number];
+  font?: string;
   delayMs: number;
 }
 
@@ -50,22 +51,24 @@ function makeConfettiParticles(
       const angle = fromLeft
         ? -Math.PI * (0.18 + Math.random() * 0.24)
         : -Math.PI * (0.58 + Math.random() * 0.24);
-      parts.push({
-        x: fromLeft ? w * 0.04 : w * 0.96,
-        y: h * (0.72 + Math.random() * 0.16),
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 3.5,
-        r: Math.random() * Math.PI * 2,
-        vr: (Math.random() - 0.5) * 0.26,
-        phase: Math.random() * Math.PI * 2,
-        sway: 0.4 + Math.random() * 0.9,
-        w: 6 + Math.random() * 5,
-        h: 9 + Math.random() * 7,
-        c,
-        shape,
-        suit: shape === 'suit' ? SUITS[i % SUITS.length] : undefined,
-        delayMs: isSecondWave ? 260 : 0,
-      });
+        const hVal = 9 + Math.random() * 7;
+        parts.push({
+          x: fromLeft ? w * 0.04 : w * 0.96,
+          y: h * (0.72 + Math.random() * 0.16),
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 3.5,
+          r: Math.random() * Math.PI * 2,
+          vr: (Math.random() - 0.5) * 0.26,
+          phase: Math.random() * Math.PI * 2,
+          sway: 0.4 + Math.random() * 0.9,
+          w: 6 + Math.random() * 5,
+          h: hVal,
+          c,
+          shape,
+          suit: shape === 'suit' ? SUITS[i % SUITS.length] : undefined,
+          font: shape === 'suit' ? `700 ${Math.round(hVal + 4)}px sans-serif` : undefined,
+          delayMs: isSecondWave ? 260 : 0,
+        });
     } else if (origin) {
       // Directional burst erupting from a specific player's seat toward the table
       const inwardX = Math.max(-1, Math.min(1, (w * 0.5 - origin.x) / Math.max(1, w * 0.35)));
@@ -80,6 +83,7 @@ function makeConfettiParticles(
         : isBottom
           ? -(10.5 + Math.random() * 9.5)
           : -(5.5 + Math.random() * 9.5);
+      const hVal = 8 + Math.random() * 7;
       parts.push({
         x: origin.x + (Math.random() - 0.5) * 28,
         y: origin.y + (Math.random() - 0.5) * 20,
@@ -90,13 +94,15 @@ function makeConfettiParticles(
         phase: Math.random() * Math.PI * 2,
         sway: 0.35 + Math.random() * 0.8,
         w: 6 + Math.random() * 5,
-        h: 8 + Math.random() * 7,
+        h: hVal,
         c,
         shape,
         suit: shape === 'suit' ? SUITS[i % SUITS.length] : undefined,
+        font: shape === 'suit' ? `700 ${Math.round(hVal + 4)}px sans-serif` : undefined,
         delayMs: 0,
       });
     } else {
+      const hVal = 8 + Math.random() * 7;
       parts.push({
         x: w / 2 + (Math.random() - 0.5) * w * 0.34,
         y: h * 0.36,
@@ -107,10 +113,11 @@ function makeConfettiParticles(
         phase: Math.random() * Math.PI * 2,
         sway: 0.35 + Math.random() * 0.8,
         w: 6 + Math.random() * 5,
-        h: 8 + Math.random() * 7,
+        h: hVal,
         c,
         shape,
         suit: shape === 'suit' ? SUITS[i % SUITS.length] : undefined,
+        font: shape === 'suit' ? `700 ${Math.round(hVal + 4)}px sans-serif` : undefined,
         delayMs: 0,
       });
     }
@@ -152,7 +159,8 @@ export function Confetti({
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
 
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    // Cap DPR at 1.5 to cut HiDPI full-screen canvas fill-rate by up to 44% on integrated GPUs
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
     let w = window.innerWidth;
     let h = window.innerHeight;
     const sizeCanvas = () => {
@@ -164,7 +172,7 @@ export function Confetti({
     sizeCanvas();
 
     // Keep particle counts modest for 60/120fps across desktop & mobile
-    const cappedCount = Math.min(count, mode === 'match' ? 110 : 85);
+    const cappedCount = Math.min(count, mode === 'match' ? 100 : 76);
     const resolvedOrigin =
       originX !== undefined && originY !== undefined ? { x: originX, y: originY } : undefined;
     const parts = makeConfettiParticles(cappedCount, w, h, mode, resolvedOrigin);
@@ -181,13 +189,16 @@ export function Confetti({
       const dt = Math.min(32, Math.max(0.5, t - prevT)) / 16.667;
       prevT = t;
 
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const fade = Math.max(0, 1 - Math.max(0, elapsed - duration * 0.62) / (duration * 0.38));
       ctx.globalAlpha = fade;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
 
       const drag = Math.pow(0.985, dt);
+      let lastFont = '';
       for (const p of parts) {
         if (elapsed < p.delayMs) continue;
         p.vy += 0.34 * dt;
@@ -197,9 +208,11 @@ export function Confetti({
         p.y += p.vy * dt;
         p.r += p.vr * dt;
 
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.r);
+        if (p.y > h + 32) continue;
+
+        const cos = Math.cos(p.r) * dpr;
+        const sin = Math.sin(p.r) * dpr;
+        ctx.setTransform(cos, sin, -sin, cos, p.x * dpr, p.y * dpr);
         ctx.fillStyle = p.c;
 
         if (p.shape === 'circle') {
@@ -216,21 +229,22 @@ export function Confetti({
           ctx.lineTo(-rx, 0);
           ctx.closePath();
           ctx.fill();
-        } else if (p.shape === 'suit' && p.suit) {
-          ctx.font = `700 ${Math.round(p.h + 4)}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
+        } else if (p.shape === 'suit' && p.suit && p.font) {
+          if (lastFont !== p.font) {
+            ctx.font = p.font;
+            lastFont = p.font;
+          }
           ctx.fillText(p.suit, 0, 0);
         } else {
           ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.cos(p.r * 2)) + 1.2);
         }
-        ctx.restore();
       }
 
       if (elapsed < duration) {
         raf = requestAnimationFrame(tick);
       } else {
-        ctx.clearRect(0, 0, w, h);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         setDone(true);
         onCompleteRef.current?.();
       }
@@ -295,7 +309,7 @@ export function ImpactBurst({ burst }: { burst: BurstEvent | null }) {
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
 
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
     const w = window.innerWidth;
     const h = window.innerHeight;
     canvas.width = Math.floor(w * dpr);

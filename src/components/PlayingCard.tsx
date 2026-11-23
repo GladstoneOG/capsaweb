@@ -1,8 +1,8 @@
-import type { CSSProperties } from 'react';
+import { memo, type CSSProperties } from 'react';
 import type { Card, Suit } from '@engine/types';
 import { CourtArt } from './CourtArt';
 
-export function SuitGlyph({ suit, className }: { suit: Suit; className?: string }) {
+export const SuitGlyph = memo(function SuitGlyph({ suit, className }: { suit: Suit; className?: string }) {
   switch (suit) {
     case 'D':
       return (
@@ -32,7 +32,7 @@ export function SuitGlyph({ suit, className }: { suit: Suit; className?: string 
         </svg>
       );
   }
-}
+});
 
 const SUIT_NAMES: Record<Suit, string> = { D: 'Diamonds', C: 'Clubs', H: 'Hearts', S: 'Spades' };
 
@@ -126,20 +126,26 @@ interface PlayingCardProps {
   selected?: boolean;
   interactive?: boolean;
   highlightStarting?: boolean;
+  cardIndex?: number;
   onClick?: () => void;
   onPointerDown?: (e: React.PointerEvent<HTMLButtonElement>) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onCardPointerDown?: (card: Card, e: React.PointerEvent<HTMLButtonElement>) => void;
+  onCardKeyDown?: (card: Card, index: number, e: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
-export function PlayingCard({
+export const PlayingCard = memo(function PlayingCard({
   card,
   size = 'md',
   selected = false,
   interactive = false,
   highlightStarting = false,
+  cardIndex = 0,
   onClick,
   onPointerDown,
   onKeyDown,
+  onCardPointerDown,
+  onCardKeyDown,
 }: PlayingCardProps) {
   const isRed = card.suit === 'D' || card.suit === 'H';
   const isFace = card.rank === 'J' || card.rank === 'Q' || card.rank === 'K';
@@ -221,8 +227,16 @@ export function PlayingCard({
         className={classes}
         draggable={false}
         onClick={onClick}
-        onPointerDown={onPointerDown}
-        onKeyDown={onKeyDown}
+        onPointerDown={
+          onCardPointerDown
+            ? (e) => onCardPointerDown(card, e)
+            : onPointerDown
+        }
+        onKeyDown={
+          onCardKeyDown
+            ? (e) => onCardKeyDown(card, cardIndex, e)
+            : onKeyDown
+        }
         aria-pressed={selected}
         aria-label={label}
       >
@@ -235,8 +249,8 @@ export function PlayingCard({
       {inner}
     </div>
   );
-}
+});
 
-export function CardBack({ className = '' }: { className?: string }) {
+export const CardBack = memo(function CardBack({ className = '' }: { className?: string }) {
   return <span className={`card-back ${className}`} aria-hidden="true" />;
-}
+});

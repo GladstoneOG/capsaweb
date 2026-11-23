@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowLeftRight,
   ArrowUpDown,
@@ -141,7 +141,7 @@ function CountdownText({
   return <span className={secs <= 7 ? 'is-urgent' : ''}>{secs}s</span>;
 }
 
-function Seat({
+const Seat = memo(function Seat({
   player,
   pos,
   isTurn,
@@ -151,7 +151,7 @@ function Seat({
   justPassed,
   lowAlert,
   roundGain,
-  seatRef,
+  onRegisterSeat,
   clockOffset,
 }: {
   player: SanitizedPlayer;
@@ -163,9 +163,13 @@ function Seat({
   justPassed: boolean;
   lowAlert: boolean;
   roundGain: number;
-  seatRef: (el: HTMLElement | null) => void;
+  onRegisterSeat: (id: string, el: HTMLElement | null) => void;
   clockOffset: number;
 }) {
+  const bindSeatRef = useCallback(
+    (el: HTMLElement | null) => onRegisterSeat(player.id, el),
+    [onRegisterSeat, player.id]
+  );
   const fanCount = Math.min(player.cardCount, 7);
   const inGrace = Boolean(player.disconnected && !player.isBot && player.reconnectGraceUntil);
   const bubble = inGrace
@@ -182,7 +186,7 @@ function Seat({
 
   return (
     <div
-      ref={seatRef}
+      ref={bindSeatRef}
       className={`seat seat--${pos}${isTurn ? ' is-turn' : ''}${
         player.passed && !player.finishRank ? ' is-passed' : ''
       }${justPassed ? ' is-just-passed' : ''}${
@@ -267,7 +271,7 @@ function Seat({
       )}
     </div>
   );
-}
+});
 
 interface FinishBanner {
   id: string;
@@ -813,10 +817,10 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
   }, [drawerOpen, room.activity.length]);
 
   // ---------- Selection evaluation ----------
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedCards = useMemo(() => {
-    const set = new Set(selectedIds);
-    return sortedHand.filter((c) => set.has(c.id));
-  }, [sortedHand, selectedIds]);
+    return sortedHand.filter((c) => selectedSet.has(c.id));
+  }, [sortedHand, selectedSet]);
 
   const bombRules = useMemo(
     () => ({ enableBombsSingle: room.rules.enableBombsSingle, enableBombsPair: room.rules.enableBombsPair }),
@@ -874,8 +878,8 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
     draggingId,
     ghostRef,
     ghostDims,
-    registerSlot,
-    registerFlip,
+    getSlotRef,
+    getFlipRef,
     handleCardPointerDown,
     snapshotRects,
   } = useHandDrag({
@@ -1367,7 +1371,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
               justPassed={justPassedIds.has(player.id)}
               lowAlert={lowAlertId === player.id}
               roundGain={showRoundGain ? player.roundPoints : 0}
-              seatRef={(el) => registerSeatEl(player.id, el)}
+              onRegisterSeat={registerSeatEl}
               clockOffset={clockOffset}
             />
           ))}
@@ -1395,20 +1399,6 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
 
                 <div
                   className={`turn-rim-arc${activeSeat === 'bottom' ? ' is-self' : ''}`}
-                  style={{ '--turn-deg': `${turnAngle}deg` } as CSSProperties}
-                  aria-hidden="true"
-                >
-                  <span className="turn-rim-rotor" />
-                  <span
-                    className={`turn-rim-chord turn-rim-chord--top${activeSeat === 'top' ? ' is-on' : ''}`}
-                  />
-                  <span
-                    className={`turn-rim-chord turn-rim-chord--bottom${activeSeat === 'bottom' ? ' is-on' : ''}`}
-                  />
-                </div>
-
-                <div
-                  className={`turn-rim-edge${activeSeat === 'bottom' ? ' is-self' : ''}`}
                   style={{ '--turn-deg': `${turnAngle}deg` } as CSSProperties}
                   aria-hidden="true"
                 >
@@ -1747,19 +1737,20 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
                   return (
                     <div
                       key={card.id}
-                      ref={(el) => registerSlot(card.id, el)}
+                      ref={getSlotRef(card.id)}
                       data-card-id={card.id}
                       className={`fan-slot${isBeingDragged ? ' is-drag-placeholder' : ''}${isTradeArrived ? ' is-trade-arrived' : ''}`}
                       style={{ '--off': i - (n - 1) / 2, '--i': i + rowIdx * 13 } as CSSProperties}
                     >
-                      <div className="fan-flip" ref={(el) => registerFlip(card.id, el)}>
+                      <div className="fan-flip" ref={getFlipRef(card.id)}>
                         <PlayingCard
                           card={card}
                           interactive
-                          selected={selectedIds.includes(card.id)}
+                          selected={selectedSet.has(card.id)}
                           highlightStarting={isStartCard}
-                          onPointerDown={(e) => handleCardPointerDown(card, e)}
-                          onKeyDown={(e) => handleCardKeyDown(card, rowOffset + i, e)}
+                          cardIndex={rowOffset + i}
+                          onCardPointerDown={handleCardPointerDown}
+                          onCardKeyDown={handleCardKeyDown}
                         />
                       </div>
                     </div>
@@ -1780,7 +1771,7 @@ export function GameTable({ room, transport, error, onIntent, onLeave }: GameTab
           >
             <PlayingCard
               card={draggingCard}
-              selected={selectedIds.includes(draggingCard.id)}
+              selected={selectedSet.has(draggingCard.id)}
             />
           </div>
         )}

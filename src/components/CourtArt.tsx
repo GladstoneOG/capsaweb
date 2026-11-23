@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Suit } from '@engine/types';
 
 interface CourtArtProps {
@@ -86,7 +87,7 @@ function MiniSuitMark({ suit, x, y, scale = 1, fill }: { suit: Suit; x: number; 
  * Geometric heraldic court SVG art for Jack, Queen, and King.
  * Each rank has an unmistakable silhouette and each suit carries its own color pairing and crest.
  */
-export function CourtArt({ rank, suit }: CourtArtProps) {
+export const CourtArt = memo(function CourtArt({ rank, suit }: CourtArtProps) {
   const t = SUIT_THEMES[suit];
   const skin = '#f4d1ae';
   const skinShade = '#dfb38a';
@@ -203,4 +204,4 @@ export function CourtArt({ rank, suit }: CourtArtProps) {
       <MiniSuitMark suit={suit} x={32} y={66.5} scale={0.82} fill={t.primary} />
     </svg>
   );
-}
+});
