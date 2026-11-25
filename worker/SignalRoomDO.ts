@@ -358,6 +358,9 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
         this.diceDismissAt = null;
         this.botActionAt = null;
         this.botTradeKey = '';
+        if (state.gameState === 'roundover' && typeof state.autoDealAt === 'number') {
+          deadlines.push(state.autoDealAt);
+        }
       } else if (state.diceShowdown) {
         this.botActionAt = null;
         if (this.diceDismissAt === null) {
@@ -483,7 +486,18 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
 
     const state = this.engine.getState();
 
-    // 3. Auto-dismiss Dice Duel
+    // 3. Auto-deal next round if host is AFK / bot-controlled
+    if (
+      state.gameState === 'roundover' &&
+      typeof state.autoDealAt === 'number' &&
+      now >= state.autoDealAt
+    ) {
+      if (this.engine.handleAutoNextRound().ok) {
+        changed = true;
+      }
+    }
+
+    // 4. Auto-dismiss Dice Duel
     if (
       state.gameState === 'playing' &&
       state.diceShowdown &&
@@ -827,8 +841,9 @@ export class SignalRoomDO extends DurableObject<SignalEnv> {
       }
     }
 
-    // If everyone had dropped out and this player is waking the room back up mid-game, refresh turn timer
-    if (wasEmpty && this.engine.getState().gameState === 'playing') {
+    // If everyone had dropped out and this player is waking the room back up mid-game, refresh timers
+    const resumedState = this.engine.getState().gameState;
+    if (wasEmpty && (resumedState === 'playing' || resumedState === 'roundover')) {
       this.engine.refreshTurnDeadlineIfNeeded();
     }
 

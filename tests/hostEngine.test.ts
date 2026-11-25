@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CapsaHostEngine } from '@engine/hostEngine';
+import { CapsaHostEngine, HOST_AFK_NEXT_ROUND_DELAY_MS } from '@engine/hostEngine';
 import { getBotPlay } from '@engine/bot';
 import type { Card, Rank, Suit } from '@engine/types';
 
@@ -513,5 +513,83 @@ describe('CapsaHostEngine Authoritative Rules & Scoring', () => {
     expect(rehydrated.getState().players[1].id).toBe('peer_1_new');
     expect(rehydrated.getState().turnDeadline).toBe(deadlineBefore);
     expect(rehydrated.getState().activity.length).toBe(activityBefore);
+  });
+
+  it('auto-deals the next round after 3-5s when the host is AFK and cancels if host resumes or match ends', () => {
+    let clock = 8_000_000;
+    const engine = new CapsaHostEngine({
+      code: 'AUTO',
+      mode: 'multiplayer',
+      hostId: 'host_1',
+      hostSessionId: 'sess_host',
+      hostName: 'Alice',
+      rules: { pointsToWin: 6 },
+      now: () => clock,
+    });
+    engine.addOrRestorePeer({ peerId: 'peer_1', sessionId: 'sess_bob', name: 'Bob', transport: 'online' });
+    engine.toggleReady('peer_1');
+    engine.startGame('host_1');
+
+    // Host goes AFK mid-round
+    expect(engine.toggleAutoPlay('host_1').ok).toBe(true);
+    expect(engine.getState().autoDealAt).toBeNull();
+
+    // Finish Round 1 (pointsToWin=6 -> roundover, not gameover)
+    const s1 = engine.getState();
+    s1.players[0].cards = [];
+    s1.players[0].finishRank = 1;
+    s1.players[1].cards = [];
+    s1.players[1].finishRank = 2;
+    s1.players[2].cards = [c('4', 'D')];
+    s1.players[3].cards = [c('5', 'D'), c('6', 'D')];
+    s1.turnIndex = 2;
+    s1.firstPlayMade = true;
+    s1.activePlay = null;
+    expect(engine.playCards(s1.players[2].id, ['4_D']).ok).toBe(true);
+
+    expect(engine.getState().gameState).toBe('roundover');
+    expect(HOST_AFK_NEXT_ROUND_DELAY_MS).toBeGreaterThanOrEqual(3000);
+    expect(HOST_AFK_NEXT_ROUND_DELAY_MS).toBeLessThanOrEqual(5000);
+    expect(engine.getState().autoDealAt).toBe(clock + HOST_AFK_NEXT_ROUND_DELAY_MS);
+    expect(engine.getSanitizedState('peer_1').autoDealAt).toBe(clock + HOST_AFK_NEXT_ROUND_DELAY_MS);
+
+    // Does not deal early
+    clock += HOST_AFK_NEXT_ROUND_DELAY_MS - 500;
+    expect(engine.handleAutoNextRound().ok).toBe(false);
+    expect(engine.getState().gameState).toBe('roundover');
+
+    // If host resumes control before timer fires, auto-deal cancels
+    expect(engine.toggleAutoPlay('host_1').ok).toBe(true);
+    expect(engine.getState().autoDealAt).toBeNull();
+    clock += 1000;
+    expect(engine.handleAutoNextRound().ok).toBe(false);
+    expect(engine.getState().gameState).toBe('roundover');
+
+    // If host goes AFK again during roundover, auto-deal reschedules and deals Round 2 when due
+    expect(engine.toggleAutoPlay('host_1').ok).toBe(true);
+    expect(engine.getState().autoDealAt).toBe(clock + HOST_AFK_NEXT_ROUND_DELAY_MS);
+    clock += HOST_AFK_NEXT_ROUND_DELAY_MS;
+    expect(engine.handleAutoNextRound().ok).toBe(true);
+    expect(engine.getState().gameState).toBe('playing');
+    expect(engine.getState().roundNumber).toBe(2);
+    expect(engine.getState().autoDealAt).toBeNull();
+
+    // Finish Round 2 so Alice reaches 6 points (gameover) — should NOT auto-deal a rematch
+    const s2 = engine.getState();
+    s2.players[0].cards = [];
+    s2.players[0].finishRank = 1;
+    s2.players[1].cards = [];
+    s2.players[1].finishRank = 2;
+    s2.players[2].cards = [c('7', 'D')];
+    s2.players[3].cards = [c('8', 'D'), c('9', 'D')];
+    s2.turnIndex = 2;
+    s2.firstPlayMade = true;
+    s2.activePlay = null;
+    expect(engine.playCards(s2.players[2].id, ['7_D']).ok).toBe(true);
+
+    expect(engine.getState().gameState).toBe('gameover');
+    expect(engine.getState().autoDealAt).toBeNull();
+    clock += 10_000;
+    expect(engine.handleAutoNextRound().ok).toBe(false);
   });
 });

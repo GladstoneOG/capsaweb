@@ -93,6 +93,7 @@ class SoloAutomation {
   private botTimer: number | null = null;
   private diceTimer: number | null = null;
   private turnTimer: number | null = null;
+  private nextRoundTimer: number | null = null;
   private botTradeAttemptedKey: string | null = null;
 
   constructor(
@@ -106,6 +107,15 @@ class SoloAutomation {
 
     if (state.gameState !== 'playing') {
       this.botTradeAttemptedKey = null;
+      if (state.gameState === 'roundover' && typeof state.autoDealAt === 'number') {
+        const delay = Math.max(50, state.autoDealAt - Date.now());
+        this.nextRoundTimer = window.setTimeout(() => {
+          const res = this.engine.handleAutoNextRound();
+          if (res.ok) {
+            this.onStateChanged();
+          }
+        }, delay);
+      }
       return;
     }
 
@@ -215,6 +225,10 @@ class SoloAutomation {
     if (this.turnTimer !== null) {
       window.clearTimeout(this.turnTimer);
       this.turnTimer = null;
+    }
+    if (this.nextRoundTimer !== null) {
+      window.clearTimeout(this.nextRoundTimer);
+      this.nextRoundTimer = null;
     }
   }
 }

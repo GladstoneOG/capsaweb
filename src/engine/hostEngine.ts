@@ -34,6 +34,7 @@ const BOT_NAMES = [
 ];
 
 const MAX_ACTIVITY = 60;
+export const HOST_AFK_NEXT_ROUND_DELAY_MS = 4500;
 
 export interface ActionResult {
   ok: boolean;
@@ -90,6 +91,7 @@ export class CapsaHostEngine {
       diceShowdown: null,
       tradingState: null,
       turnDeadline: null,
+      autoDealAt: null,
       activity: [],
       stateVersion: 1,
     };
@@ -116,6 +118,9 @@ export class CapsaHostEngine {
 
   refreshTurnDeadlineIfNeeded(): void {
     this.resetTurnDeadline();
+    if (this.state.gameState === 'roundover') {
+      this.refreshAutoDealDeadline(true);
+    }
   }
 
   executeIntent(actorId: string, intent: ClientIntent): ActionResult & { kickedPeerId?: string } {
@@ -208,6 +213,21 @@ export class CapsaHostEngine {
     this.state.turnDeadline = duration > 0 ? this.now() + duration * 1000 : null;
   }
 
+  private refreshAutoDealDeadline(forceReset = false): void {
+    if (this.state.gameState !== 'roundover') {
+      this.state.autoDealAt = null;
+      return;
+    }
+    const host = this.state.players.find((p) => p.isHost);
+    if (host && (host.autoPlay || host.isBot)) {
+      if (forceReset || typeof this.state.autoDealAt !== 'number') {
+        this.state.autoDealAt = this.now() + HOST_AFK_NEXT_ROUND_DELAY_MS;
+      }
+    } else {
+      this.state.autoDealAt = null;
+    }
+  }
+
   // ==================== LOBBY & PRESENCE ====================
 
   addOrRestorePeer(options: {
@@ -275,6 +295,7 @@ export class CapsaHostEngine {
         );
       }
       this.resetTurnDeadline();
+      this.refreshAutoDealDeadline();
       this.bumpVersion();
       return { ok: true, restored: true };
     }
@@ -351,6 +372,7 @@ export class CapsaHostEngine {
     // Avoid resetting grace timer or duplicating messages on duplicate disconnect events
     if (player.disconnected) {
       if (explicit && player.isHost && this.promoteNextHost(player.id)) {
+        this.refreshAutoDealDeadline();
         this.bumpVersion();
       }
       return;
@@ -373,6 +395,7 @@ export class CapsaHostEngine {
       this.promoteNextHost(player.id);
     }
     this.resetTurnDeadline();
+    this.refreshAutoDealDeadline();
     this.bumpVersion();
   }
 
@@ -400,6 +423,7 @@ export class CapsaHostEngine {
       true
     );
     this.resetTurnDeadline();
+    this.refreshAutoDealDeadline();
     this.bumpVersion();
     return { ok: true };
   }
@@ -452,6 +476,7 @@ export class CapsaHostEngine {
     }
     if (changed) {
       this.resetTurnDeadline();
+      this.refreshAutoDealDeadline();
       this.bumpVersion();
     }
     return changed;
@@ -605,6 +630,7 @@ export class CapsaHostEngine {
     });
 
     this.state.gameState = 'playing';
+    this.state.autoDealAt = null;
     this.state.roundNumber += 1;
     this.state.activePlay = null;
     this.state.lastPlayerPlayedId = null;
@@ -689,6 +715,7 @@ export class CapsaHostEngine {
     if (!this.state.diceShowdown) return { ok: true };
     this.state.diceShowdown = null;
     this.resetTurnDeadline();
+    this.refreshAutoDealDeadline();
     this.bumpVersion();
     return { ok: true };
   }
@@ -826,6 +853,7 @@ export class CapsaHostEngine {
     }
 
     this.resetTurnDeadline();
+    this.refreshAutoDealDeadline();
     this.bumpVersion();
     return { ok: true };
   }
@@ -913,6 +941,7 @@ export class CapsaHostEngine {
     }
 
     this.resetTurnDeadline();
+    this.refreshAutoDealDeadline();
     this.bumpVersion();
     return { ok: true };
   }
@@ -936,6 +965,7 @@ export class CapsaHostEngine {
 
     this.pushActivity('system', 'System', `${player.name} cancelled their pass.`, true);
     this.resetTurnDeadline();
+    this.refreshAutoDealDeadline();
     this.bumpVersion();
     return { ok: true };
   }
@@ -991,9 +1021,34 @@ export class CapsaHostEngine {
 
     if (this.state.players.some((p) => p.score >= this.state.rules.pointsToWin)) {
       this.state.gameState = 'gameover';
+      this.state.autoDealAt = null;
+    } else {
+      this.refreshAutoDealDeadline(true);
     }
 
     this.bumpVersion();
+  }
+
+  handleAutoNextRound(): ActionResult {
+    if (this.state.gameState !== 'roundover') {
+      return { ok: false };
+    }
+    const host = this.state.players.find((p) => p.isHost);
+    if (!host || (!host.autoPlay && !host.isBot)) {
+      this.state.autoDealAt = null;
+      return { ok: false };
+    }
+    if (typeof this.state.autoDealAt !== 'number' || this.now() < this.state.autoDealAt) {
+      return { ok: false };
+    }
+
+    this.pushActivity(
+      'system',
+      'System',
+      `${host.name} is AFK — bot dealt Round ${this.state.roundNumber + 1}.`,
+      true
+    );
+    return this.nextRound(host.id);
   }
 
   // ==================== TRADING NOVELTY RULE ====================
@@ -1159,6 +1214,7 @@ export class CapsaHostEngine {
       true
     );
     this.resetTurnDeadline();
+    this.refreshAutoDealDeadline();
     this.bumpVersion();
     return { ok: true };
   }
@@ -1232,6 +1288,7 @@ export class CapsaHostEngine {
       diceShowdown: s.firstPlayMade ? null : s.diceShowdown,
       tradingState: sanitizedTrading,
       turnDeadline: s.turnDeadline,
+      autoDealAt: s.autoDealAt ?? null,
       serverNow: this.now(),
       activity: [...s.activity],
       stateVersion: s.stateVersion,

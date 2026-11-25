@@ -159,6 +159,7 @@ export interface RoomState {
   diceShowdown: DiceShowdown | null;
   tradingState: TradingState | null;
   turnDeadline: number | null;
+  autoDealAt?: number | null;
   activity: ActivityEntry[];
   stateVersion: number;
 }
@@ -181,6 +182,7 @@ export interface SanitizedRoomState {
   diceShowdown: DiceShowdown | null;
   tradingState: TradingState | null;
   turnDeadline: number | null;
+  autoDealAt?: number | null;
   serverNow: number;
   activity: ActivityEntry[];
   stateVersion: number;

@@ -312,6 +312,27 @@ function AnimatedScore({
   return <span className="standing-total">{val}</span>;
 }
 
+function useAutoDealSeconds(autoDealAt: number | null | undefined, serverNow: number): number | null {
+  const [secs, setSecs] = useState<number | null>(() => {
+    if (typeof autoDealAt !== 'number') return null;
+    return Math.max(0, Math.ceil((autoDealAt - serverNow) / 1000));
+  });
+
+  useEffect(() => {
+    if (typeof autoDealAt !== 'number') {
+      setSecs(null);
+      return;
+    }
+    const offset = serverNow - Date.now();
+    const calc = () => Math.max(0, Math.ceil((autoDealAt - (Date.now() + offset)) / 1000));
+    setSecs(calc());
+    const id = window.setInterval(() => setSecs(calc()), 250);
+    return () => window.clearInterval(id);
+  }, [autoDealAt, serverNow]);
+
+  return secs;
+}
+
 export function ScoreboardModal({
   room,
   isHost,
@@ -325,6 +346,7 @@ export function ScoreboardModal({
 }) {
   const titleId = useId();
   const isGameOver = room.gameState === 'gameover';
+  const autoDealSecs = useAutoDealSeconds(isGameOver ? null : room.autoDealAt, room.serverNow);
   const sorted = [...room.players].sort((a, b) =>
     isGameOver ? b.score - a.score : (a.finishRank ?? 99) - (b.finishRank ?? 99)
   );
@@ -455,8 +477,18 @@ export function ScoreboardModal({
           {isHost ? (
             <button type="button" className="btn btn-primary" onClick={() => onIntent({ type: 'NEXT_ROUND' })}>
               <Play size={15} />
-              {isGameOver ? 'Rematch' : 'Deal next round'}
+              {isGameOver
+                ? 'Rematch'
+                : autoDealSecs !== null
+                  ? `Deal next round (${autoDealSecs}s)`
+                  : 'Deal next round'}
             </button>
+          ) : autoDealSecs !== null ? (
+            <span className="waiting-dots">
+              {autoDealSecs > 0
+                ? `${hostPlayer?.name ?? 'Host'} is AFK · dealing in ${autoDealSecs}s…`
+                : 'Dealing next round…'}
+            </span>
           ) : (
             <span className="waiting-dots">Waiting for {hostPlayer?.name ?? 'host'} to deal…</span>
           )}
